@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 let mainWindow;
 
@@ -29,6 +30,22 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+
+// ========== IPC: 导出历史数据到 JSON（供 Python 训练脚本读取） ==========
+ipcMain.handle('export-history-data', async (event, lotteryType, historyData) => {
+  try {
+    // 用 app.getPath('userData') 避免 asar 只读问题
+    const dataDir = path.join(app.getPath('userData'), 'data');
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    const filePath = path.join(dataDir, `${lotteryType}_history.json`);
+    fs.writeFileSync(filePath, JSON.stringify(historyData, null, 2), 'utf8');
+    console.log(`[Main] 导出 ${lotteryType} 数据到 ${filePath}, ${historyData.length} 条`);
+    return { success: true, count: historyData.length, path: filePath };
+  } catch (error) {
+    console.error('[Main] 导出失败:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 // ========== IPC: 获取推荐号码 ==========

@@ -1699,3 +1699,66 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 可点击替换的球 */
+.ball.clickable { cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; }
+.ball.clickable:hover { transform: scale(1.2); box-shadow: 0 0 12px rgba(255,255,255,0.6); }
+.ball.clickable:active { transform: scale(0.95); }
+
+/* 推荐区提示文字 */
+.rec-hint { text-align: center; color: rgba(255,255,255,0.35); font-size: 11px; margin-top: 6px; }
+
+/* 按钮颜色变化 */
+.btn-cycle { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+.btn-cycle:hover { background: linear-gradient(135deg, #818cf8, #6366f1); }
+
+/* ===== 往期推荐分组布局 ===== */
+.hri-period-group {
+  margin-bottom: 16px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.hri-period-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.hri-period-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+.hri-period-status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.hri-period-status.status-done { background: rgba(46,204,113,0.15); color: #2ecc71; }
+.hri-period-status.status-pending { background: rgba(241,196,15,0.12); color: #f39c12; }
+.hri-period-count { font-size: 11px; color: #666; margin-left: auto; }
+.hri-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.hri-item-row:last-child { border-bottom: none; }
+.hri-item-left { display: flex; align-items: center; gap: 8px; }
+.hri-set-tag { font-size: 11px; color: #888; min-width: 44px; }
+.hri-item-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.hri-result { font-size: 12px; font-weight: 600; color: #888; }
+.hri-result.hri-great { color: #2ecc71; }
+.hri-result.hri-ok    { color: #f39c12; }
+.hri-result.hri-poor  { color: #555; }
+.hri-result.hri-pending { color: #f39c12; }
+.hri-reason {
+  font-size: 11px; color: #555; max-width: 200px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right;
+}
+.c-green { color: #2ecc71; }
+.c-red   { color: #e74c3c; }

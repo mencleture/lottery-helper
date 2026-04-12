@@ -1,7 +1,7 @@
 {
   "name": "lottery-app",
-  "version": "1.0.0",
-  "description": "彩票开奖记录查询与号码推荐",
+  "version": "1.1.1",
+  "description": "彩票开奖查询记录与号码推荐",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -9,12 +9,7 @@
     "build": "electron-builder --win",
     "build:dir": "electron-builder --win --dir"
   },
-  "keywords": [
-    "lottery",
-    "彩票",
-    "双色球",
-    "大乐透"
-  ],
+  "keywords": ["lottery", "彩票", "双色球", "大乐透"],
   "author": "QClaw",
   "license": "MIT",
   "devDependencies": {
@@ -31,9 +26,7 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ]
     },
@@ -51,7 +44,8 @@
       "index.html",
       "renderer.js",
       "styles.css",
-      "preload.js"
+      "preload.js",
+      "CHANGELOG.md"
     ]
   }
 }

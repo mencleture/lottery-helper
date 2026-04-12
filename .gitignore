@@ -1,18 +1,23 @@
 # Dependencies
 node_modules/
 
-# Build outputs
+# Build outputs (don't track large packaged files)
 dist/
 dist2/
-win-unpacked/
 
-# Temp
+# User data (persisted locally)
+data/
+
+# ML model files (generated locally)
+models/
+
+# Temp / cache
+python/__pycache__/
 temp_extract/
-*.pyc
-
-# OS
-.DS_Store
-Thumbs.db
 
 # Logs
 *.log
+
+# OS junk
+.DS_Store
+Thumbs.db

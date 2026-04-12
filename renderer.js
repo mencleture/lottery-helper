@@ -169,6 +169,10 @@ async function refreshData() {
       state.historyData.sort((a, b) => b.period.localeCompare(a.period));
       state.historyData = state.historyData.slice(0, 200); // 最多保留200期
       document.getElementById('dataSource').textContent = `🌐 500彩票网实时数据（+${added}条）`;
+      // 同步导出数据供 Python ML 训练脚本读取
+      try {
+        await window.electronAPI.exportHistoryData(currentLotteryType, state.historyData);
+      } catch(e) { console.log('导出数据失败:', e); }
     } else {
       if (state.historyData.length === 0) {
         state.historyData = getBuiltInData(currentLotteryType);
@@ -305,45 +309,57 @@ async function generateNewRecommendation() {
   }
 }
 
-// ========== 换一组：轮换5组备选（不换期号，不清空） ==========
-function nextSet() {
+// ========== 换一组：重新生成5组全新推荐 ==========
+async function regenerateAllGroups() {
   const state = getState();
-  if (state.allSets.length === 0) return;
-  
-  state.activeSetIndex = (state.activeSetIndex + 1) % state.allSets.length;
-  renderRecommendationPanel(state);
+  if (state.historyData.length === 0) return;
+  // 显示加载状态
+  document.getElementById('recommendationContainer').innerHTML = `
+    <div class="empty-state"><span class="empty-icon">⚙️</span><p>正在生成新推荐...</p></div>
+  `;
+  try {
+    const result = await window.electronAPI.getRecommendation(currentLotteryType, state.historyData);
+    if (result.success && result.data.length > 0) {
+      const newState = getState();
+      newState.allSets = result.data;
+      newState.activeSetIndex = 0;
+      renderRecommendationPanel(newState);
+      showToast(`🎲 已生成新5组推荐！`, 'success');
+    }
+  } catch (error) {
+    console.error('重新生成失败:', error);
+    showToast('重新生成失败', 'error');
+  }
 }
 
-// ========== 确认使用 ==========
+// ========== 切换到指定组 ==========
+function jumpToSet(index) {
+  const state = getState();
+  if (index >= 0 && index < state.allSets.length) {
+    state.activeSetIndex = index;
+    renderRecommendationPanel(state);
+  }
+}
+
+// ========== 确认使用（增量追加，同一期可保存多组） ==========
 function confirmSet() {
   const state = getState();
   if (!state.currentPeriod || state.allSets.length === 0) return;
   
   const set = state.allSets[state.activeSetIndex];
   
-  // 存入往期历史（避免重复）
-  const exists = state.recommendationHistory.some(h => 
-    h.period === state.currentPeriod && h.setIndex === state.activeSetIndex
-  );
-  if (!exists) {
-    state.recommendationHistory.unshift({
-      period: state.currentPeriod,
-      setIndex: state.activeSetIndex,
-      set: set,
-      confirmed: true,
-      result: null
-    });
-  }
-  
-  state.confirmedRecommendation = {
+  // 增量追加，不做去重（同一期可以保存多组）
+  state.recommendationHistory.unshift({
     period: state.currentPeriod,
     setIndex: state.activeSetIndex,
-    set: set
-  };
+    set: set,
+    savedAt: new Date().toLocaleString('zh-CN'),
+    result: null
+  });
   
   renderRecommendationPanel(state);
   renderHistoryRecPanel(state);
-  showToast(`✅ 已确认第 ${state.currentPeriod} 期第 ${state.activeSetIndex + 1} 组推荐！`);
+  showToast(`✅ 第 ${state.currentPeriod} 期第 ${state.activeSetIndex + 1} 组已保存！`);
   saveState();
 }
 
@@ -371,35 +387,37 @@ async function adoptNewRecommendation() {
   await generateNewRecommendation();
 }
 
-// ========== 检查并填入中奖结果 ==========
+// ========== 检查并填入中奖结果（更新同一期所有保存的记录） ==========
 function checkResults(state) {
-  if (!state.confirmedRecommendation) return;
+  // 找到所有已开奖且有待开奖结果的记录
+  const periodsToCheck = [...new Set(
+    state.recommendationHistory
+      .filter(h => !h.result)
+      .map(h => h.period)
+  )];
   
-  const latestRecord = state.historyData.find(r => r.period === state.confirmedRecommendation.period);
-  if (!latestRecord) return;
-  
-  const set = state.confirmedRecommendation.set;
-  let result;
-  
-  if (currentLotteryType === 'ssq') {
-    const redHit = set.redBalls.filter(n => latestRecord.redNumbers.includes(n)).length;
-    const blueHit = set.blueBall === latestRecord.blueNumber ? 1 : 0;
-    result = { redHit, blueHit };
-  } else {
-    const frontHit = set.frontBalls.filter(n => latestRecord.frontNumbers.includes(n)).length;
-    const backHit = set.backBalls.filter(n => latestRecord.backNumbers.includes(n)).length;
-    result = { frontHit, backHit };
+  for (const period of periodsToCheck) {
+    const record = state.historyData.find(r => r.period === period);
+    if (!record) continue;
+    
+    // 更新该期所有保存的记录
+    for (const item of state.recommendationHistory) {
+      if (item.period !== period || item.result) continue;
+      const set = item.set;
+      
+      if (currentLotteryType === 'ssq') {
+        const redHit = set.redBalls.filter(n => record.redNumbers.includes(n)).length;
+        const blueHit = set.blueBall === record.blueNumber ? 1 : 0;
+        item.result = { redHit, blueHit };
+      } else {
+        const frontHit = set.frontBalls.filter(n => record.frontNumbers.includes(n)).length;
+        const backHit = set.backBalls.filter(n => record.backNumbers.includes(n)).length;
+        item.result = { frontHit, backHit };
+      }
+    }
   }
   
-  state.confirmedRecommendation.result = result;
-  
-  // 更新历史记录中的结果
-  const histItem = state.recommendationHistory.find(h =>
-    h.period === state.confirmedRecommendation.period && h.confirmed
-  );
-  if (histItem) histItem.result = result;
-  
-  renderHistoryRecPanel(state);
+  if (periodsToCheck.length > 0) renderHistoryRecPanel(state);
 }
 
 // ========== 渲染全部（当前彩种） ==========
@@ -440,16 +458,18 @@ function renderRecommendationPanel(state) {
   const isLatestPeriod = latestRecord && state.currentPeriod === latestRecord.period;
   const resultInfo = state.confirmedRecommendation?.result;
   
-  // 渲染球
+  // 渲染球（不可点击，显示用）
   const renderBalls = (rec, showHit = false, record = null) => {
     if (currentLotteryType === 'ssq') {
       const redClass = (n) => {
-        if (!showHit || !record) return 'ball red';
-        return record.redNumbers.includes(n) ? 'ball red hit-ball' : 'ball red';
+        let cls = 'ball red';
+        if (showHit && record && record.redNumbers.includes(n)) cls += ' hit-ball';
+        return cls;
       };
       const blueClass = () => {
-        if (!showHit || !record) return 'ball blue';
-        return record.blueNumber === rec.blueBall ? 'ball blue hit-ball' : 'ball blue';
+        let cls = 'ball blue';
+        if (showHit && record && record.blueNumber === rec.blueBall) cls += ' hit-ball';
+        return cls;
       };
       return `
         <div class="rec-balls-row">
@@ -463,12 +483,14 @@ function renderRecommendationPanel(state) {
       `;
     } else {
       const frontClass = (n) => {
-        if (!showHit || !record) return 'ball red';
-        return record.frontNumbers.includes(n) ? 'ball red hit-ball' : 'ball red';
+        let cls = 'ball red';
+        if (showHit && record && record.frontNumbers.includes(n)) cls += ' hit-ball';
+        return cls;
       };
       const backClass = (n) => {
-        if (!showHit || !record) return 'ball blue';
-        return record.backNumbers.includes(n) ? 'ball blue hit-ball' : 'ball blue';
+        let cls = 'ball blue';
+        if (showHit && record && record.backNumbers.includes(n)) cls += ' hit-ball';
+        return cls;
       };
       return `
         <div class="rec-balls-row">
@@ -566,25 +588,14 @@ function renderRecommendationPanel(state) {
     </div>
   ` : '';
   
-  // 底部按钮
-  let confirmBtnHTML = '';
-  if (isConfirmed) {
-    confirmBtnHTML = `<div class="confirmed-badge">✅ 已确认为第 ${state.currentPeriod} 期推荐</div>`;
-  } else {
-    confirmBtnHTML = `
-      <button class="btn-confirm" onclick="confirmSet()">
-        ✅ 确认使用此推荐
-      </button>
-    `;
-  }
-  
+  // 底部按钮：换一组（重新生成）+ 导航
   container.innerHTML = `
     <div class="rec-top">
       <div class="rec-period-badge">📌 第 ${state.currentPeriod} 期</div>
       <div class="rec-set-pager">
-        <button class="btn-nav ${state.activeSetIndex === 0 ? 'disabled' : ''}" onclick="prevSet()">◀</button>
+        <button class="btn-nav ${state.activeSetIndex === 0 ? 'disabled' : ''}" onclick="jumpToSet(${state.activeSetIndex - 1})">◀</button>
         <span class="pager-label">第 <b>${state.activeSetIndex + 1}</b> / ${state.allSets.length} 组</span>
-        <button class="btn-nav ${state.activeSetIndex === state.allSets.length - 1 ? 'disabled' : ''}" onclick="nextSet()">▶</button>
+        <button class="btn-nav ${state.activeSetIndex === state.allSets.length - 1 ? 'disabled' : ''}" onclick="jumpToSet(${state.activeSetIndex + 1})">▶</button>
       </div>
     </div>
     
@@ -601,10 +612,12 @@ function renderRecommendationPanel(state) {
     </div>
     
     <div class="rec-actions">
-      <button class="btn-cycle" onclick="nextSet()">
-        🔄 换一组
+      ${!resultInfo ? `<button class="btn-confirm" onclick="confirmSet()">
+        ✅ 确认使用（第${state.currentPeriod}期）
+      </button>` : ''}
+      <button class="btn-cycle" onclick="regenerateAllGroups()">
+        🎲 换一组（重新生成5组新推荐）
       </button>
-      ${confirmBtnHTML}
     </div>
   `;
 }
@@ -648,78 +661,89 @@ function renderExpiredPrompt(state, latestRecord) {
 }
 
 // ========== 渲染往期推荐（带原因） ==========
+// ========== 渲染往期推荐（按期号分组，增量追加） ==========
 function renderHistoryRecPanel(state) {
   const container = document.getElementById('historyRecContent');
   
   if (state.recommendationHistory.length === 0) {
-    container.innerHTML = `<div class="history-rec-empty">暂无往期推荐记录<br><span>确认推荐后将自动记录</span></div>`;
+    container.innerHTML = `<div class="history-rec-empty">暂无保存的推荐<br><span>确认保存后可查看战绩</span></div>`;
     return;
   }
   
-  if (currentLotteryType === 'ssq') {
-    container.innerHTML = state.recommendationHistory.map(item => {
-      const result = item.result;
-      let resultStr = '', resultCls = '';
-      if (result) {
-        const total = result.redHit + (result.blueHit ? 0.5 : 0);
-        resultStr = `红${result.redHit}/6 ${result.blueHit ? '✅蓝' : '❌蓝'}`;
-        resultCls = result.redHit >= 4 ? 'hit-great' : result.redHit >= 2 ? 'hit-ok' : 'hit-poor';
-      } else {
-        resultStr = '⏳ 待开奖';
-        resultCls = 'hit-pending';
-      }
-      
-      const reasons = item.set?.reason || [];
-      const reasonText = reasons.length > 0 ? reasons.slice(0, 2).join('；') : '无策略说明';
-      
-      return `
-        <div class="hri-item ${resultCls}">
-          <div class="hri-top">
-            <span class="hri-period">第 ${item.period} 期 · 第 ${item.setIndex + 1} 组</span>
-            <span class="hri-conf-tag ${item.confirmed ? 'confirmed' : 'unconfirmed'}">${item.confirmed ? '✅已确认' : '❌未确认'}</span>
-          </div>
-          <div class="hri-balls">
-            ${item.set.redBalls.map(n => `<span class="ball-sm red">${String(n).padStart(2,'0')}</span>`).join('')}
-            <span class="ball-sm sep">+</span>
-            <span class="ball-sm blue">${String(item.set.blueBall).padStart(2,'0')}</span>
-          </div>
-          <div class="hri-result">${resultStr}</div>
-          <div class="hri-reason">策略：${reasonText}</div>
-        </div>
-      `;
-    }).join('');
-  } else {
-    container.innerHTML = state.recommendationHistory.map(item => {
-      const result = item.result;
-      let resultStr = '', resultCls = '';
-      if (result) {
-        resultStr = `前区${result.frontHit}/5，后区${result.backHit}/2`;
-        resultCls = result.frontHit >= 3 ? 'hit-great' : result.frontHit >= 1 ? 'hit-ok' : 'hit-poor';
-      } else {
-        resultStr = '⏳ 待开奖';
-        resultCls = 'hit-pending';
-      }
-      
-      const reasons = item.set?.reason || [];
-      const reasonText = reasons.length > 0 ? reasons.slice(0, 2).join('；') : '无策略说明';
-      
-      return `
-        <div class="hri-item ${resultCls}">
-          <div class="hri-top">
-            <span class="hri-period">第 ${item.period} 期 · 第 ${item.setIndex + 1} 组</span>
-            <span class="hri-conf-tag ${item.confirmed ? 'confirmed' : 'unconfirmed'}">${item.confirmed ? '✅已确认' : '❌未确认'}</span>
-          </div>
-          <div class="hri-balls">
-            ${item.set.frontBalls.map(n => `<span class="ball-sm red">${String(n).padStart(2,'0')}</span>`).join('')}
-            <span class="ball-sm sep">+</span>
-            ${item.set.backBalls.map(n => `<span class="ball-sm blue">${String(n).padStart(2,'0')}</span>`).join('')}
-          </div>
-          <div class="hri-result">${resultStr}</div>
-          <div class="hri-reason">策略：${reasonText}</div>
-        </div>
-      `;
-    }).join('');
+  // 按期号分组
+  const grouped = {};
+  for (const item of state.recommendationHistory) {
+    if (!grouped[item.period]) grouped[item.period] = [];
+    grouped[item.period].push(item);
   }
+  
+  const renderBalls = (item) => {
+    if (currentLotteryType === 'ssq') {
+      return `
+        <div class="hri-balls">
+          ${item.set.redBalls.map(n => `<span class="ball-sm red">${String(n).padStart(2,'0')}</span>`).join('')}
+          <span class="ball-sm sep">+</span>
+          <span class="ball-sm blue">${String(item.set.blueBall).padStart(2,'0')}</span>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="hri-balls">
+          ${item.set.frontBalls.map(n => `<span class="ball-sm red">${String(n).padStart(2,'0')}</span>`).join('')}
+          <span class="ball-sm sep">+</span>
+          ${item.set.backBalls.map(n => `<span class="ball-sm blue">${String(n).padStart(2,'0')}</span>`).join('')}
+        </div>
+      `;
+    }
+  };
+  
+  const renderResult = (item) => {
+    if (!item.result) return `<div class="hri-result hri-pending">⏳ 待开奖</div>`;
+    
+    if (currentLotteryType === 'ssq') {
+      const r = item.result;
+      const badge = r.redHit >= 4 ? 'great' : r.redHit >= 2 ? 'ok' : 'poor';
+      return `
+        <div class="hri-result hri-${badge}">
+          红球命中 <b>${r.redHit}/6</b>${r.blueHit ? '，蓝球 <b class="c-green">✅</b>' : '，蓝球 <b class="c-red">❌</b>'}
+        </div>
+      `;
+    } else {
+      const r = item.result;
+      return `<div class="hri-result">前区 <b>${r.frontHit}/5</b>，后区 <b>${r.backHit}/2</b></div>`;
+    }
+  };
+  
+  const periods = Object.keys(grouped).sort((a, b) => b - a); // 倒序，最新期在上
+  
+  container.innerHTML = periods.map(period => {
+    const items = grouped[period];
+    const firstItem = items[0];
+    const hasResult = items.some(i => i.result);
+    const periodStatus = hasResult ? '已开奖' : '待开奖';
+    
+    return `
+      <div class="hri-period-group">
+        <div class="hri-period-header">
+          <span class="hri-period-label">第 ${period} 期</span>
+          <span class="hri-period-status ${hasResult ? 'status-done' : 'status-pending'}">${periodStatus}</span>
+          <span class="hri-period-count">共 ${items.length} 组</span>
+        </div>
+        ${items.map(item => `
+          <div class="hri-item-row">
+            <div class="hri-item-left">
+              <div class="hri-set-tag">第 ${item.setIndex + 1} 组</div>
+              ${renderBalls(item)}
+            </div>
+            <div class="hri-item-right">
+              ${renderResult(item)}
+              <div class="hri-reason">策略：${(item.set?.reason || [])[0] || '—'}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }).join('');
 }
 
 // ========== 渲染历史开奖记录 ==========

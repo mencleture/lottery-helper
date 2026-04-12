@@ -48,51 +48,51 @@ ipcMain.handle('get-recommendation', async (event, lotteryType, historyData) => 
 // ========== 智能推荐算法 ==========
 function generateSmartRecommendation(lotteryType, historyData) {
   const recommendations = [];
-  const recent10 = historyData.slice(0, 10);  // 最近10期
-  const recent30 = historyData.slice(0, 30);  // 最近30期
-  
+  const recent10 = historyData.slice(0, 10);
+  const recent30 = historyData.slice(0, 30);
+  const recent50 = historyData.slice(0, 50);
+
   if (lotteryType === 'ssq') {
     // ===== 双色球分析 =====
-    
+
     // 1. 热号统计（最近10期出现频率）
     const redFreq = new Array(34).fill(0);
     const blueFreq = new Array(17).fill(0);
-    
+
     recent10.forEach(record => {
       if (record.redNumbers) {
         record.redNumbers.forEach(n => redFreq[n]++);
       }
       if (record.blueNumber) blueFreq[record.blueNumber]++;
     });
-    
-    // 热号：出现2次以上
+
+    // 热号：出现3次以上 | 温号：出现1-2次 | 遗漏：0次
     const hotReds = [];
-    const warmReds = [];  // 出现1次
-    for (let i = 1; i <= 33; i++) {
-      if (redFreq[i] >= 3) hotReds.push(i);
-      else if (redFreq[i] === 1 || redFreq[i] === 2) warmReds.push(i);
-    }
-    
-    // 2. 遗漏号（最近10期未出现）
+    const warmReds = [];
     const missingReds = [];
     for (let i = 1; i <= 33; i++) {
-      if (redFreq[i] === 0) missingReds.push(i);
+      if (redFreq[i] >= 3) hotReds.push(i);
+      else if (redFreq[i] >= 1) warmReds.push(i);
+      else missingReds.push(i);
     }
-    
+
+    // 2. 遗漏期数精确计算（最近50期）
+    const redMissing = computeMissingPeriods(1, 33, recent50, 'redNumbers');
+
     // 3. 连号分析（最近10期含连号的期数）
     let consecutiveCount = 0;
     recent10.forEach(record => {
       if (hasConsecutive(record.redNumbers)) consecutiveCount++;
     });
     const consecutiveRate = consecutiveCount / recent10.length;
-    
+
     // 4. 奇偶统计（最近10期）
     let oddTotal = 0;
     recent10.forEach(record => {
       oddTotal += record.redNumbers.filter(n => n % 2 === 1).length;
     });
     const avgOdd = oddTotal / recent10.length;
-    
+
     // 5. 区间统计（三区：1-11, 12-22, 23-33）
     const zoneCount = [0, 0, 0];
     recent10.forEach(record => {
@@ -102,7 +102,16 @@ function generateSmartRecommendation(lotteryType, historyData) {
         else zoneCount[2]++;
       });
     });
-    
+
+    // 6. 和值区间分布（从真实历史统计）
+    const sumStats = computeSumStats(recent50, 'redNumbers');
+
+    // 7. AC值分布（从真实历史统计）
+    const acStats = computeACStats(recent50, 'redNumbers');
+
+    // 8. 尾数分布统计
+    const digitStats = computeDigitStats(recent30, 'redNumbers');
+
     // 生成5组不同策略
     const strategies = [
       { name: '热号为主', weight: 'hot' },
@@ -111,22 +120,22 @@ function generateSmartRecommendation(lotteryType, historyData) {
       { name: '连号组合', weight: 'consecutive' },
       { name: '区间精选', weight: 'zone' }
     ];
-    
+
     strategies.forEach((strategy, idx) => {
       const result = generateSSQSet(
-        strategy, hotReds, warmReds, missingReds, 
-        consecutiveRate, avgOdd, zoneCount, blueFreq
+        strategy, hotReds, warmReds, missingReds,
+        consecutiveRate, avgOdd, zoneCount, blueFreq,
+        redMissing, sumStats, acStats, digitStats
       );
       recommendations.push(result);
     });
-    
+
   } else if (lotteryType === 'dlt') {
     // ===== 大乐透分析 =====
-    
-    // 热号统计
+
     const frontFreq = new Array(36).fill(0);
     const backFreq = new Array(13).fill(0);
-    
+
     recent10.forEach(record => {
       if (record.frontNumbers) {
         record.frontNumbers.forEach(n => frontFreq[n]++);
@@ -135,30 +144,43 @@ function generateSmartRecommendation(lotteryType, historyData) {
         record.backNumbers.forEach(n => backFreq[n]++);
       }
     });
-    
+
     const hotFronts = [];
     const warmFronts = [];
     const missingFronts = [];
-    
+
     for (let i = 1; i <= 35; i++) {
       if (frontFreq[i] >= 3) hotFronts.push(i);
       else if (frontFreq[i] >= 1) warmFronts.push(i);
       else missingFronts.push(i);
     }
-    
+
     const hotBacks = [];
     for (let i = 1; i <= 12; i++) {
       if (backFreq[i] >= 2) hotBacks.push(i);
     }
-    
+
+    // 遗漏期数（前区）
+    const frontMissing = computeMissingPeriods(1, 35, recent50, 'frontNumbers');
+    // 遗漏期数（后区）
+    const backMissing = computeMissingPeriods(1, 12, recent50, 'backNumbers');
+
     // 连号统计
     let consecutiveCount = 0;
     recent10.forEach(record => {
       if (hasConsecutive(record.frontNumbers)) consecutiveCount++;
     });
     const consecutiveRate = consecutiveCount / recent10.length;
-    
-    // 生成5组
+
+    // 和值统计（前区）
+    const frontSumStats = computeSumStats(recent50, 'frontNumbers');
+
+    // AC值统计（前区）
+    const frontACStats = computeACStats(recent50, 'frontNumbers');
+
+    // 尾数统计（前区）
+    const frontDigitStats = computeDigitStats(recent30, 'frontNumbers');
+
     const strategies = [
       { name: '热号追踪', weight: 'hot' },
       { name: '均衡稳健', weight: 'balanced' },
@@ -166,93 +188,113 @@ function generateSmartRecommendation(lotteryType, historyData) {
       { name: '连号组合', weight: 'consecutive' },
       { name: '和值优选', weight: 'sum' }
     ];
-    
+
     strategies.forEach(strategy => {
       const result = generateDLTSet(
-        strategy, hotFronts, warmFronts, missingFronts, 
-        hotBacks, backFreq, consecutiveRate
+        strategy, hotFronts, warmFronts, missingFronts,
+        hotBacks, backFreq, consecutiveRate,
+        frontMissing, backMissing, frontSumStats, frontACStats, frontDigitStats
       );
       recommendations.push(result);
     });
   }
-  
+
   return recommendations;
 }
 
 // ========== 双色球生成 ==========
-function generateSSQSet(strategy, hotReds, warmReds, missingReds, 
-                         consecutiveRate, avgOdd, zoneCount, blueFreq) {
+function generateSSQSet(strategy, hotReds, warmReds, missingReds,
+                         consecutiveRate, avgOdd, zoneCount, blueFreq,
+                         redMissing, sumStats, acStats, digitStats) {
   const reasons = [strategy.name + '策略'];
   let redBalls = [];
   let blueBall;
-  
+
+  // ---------- 候选池加权 ----------
+  // 遗漏值越大的球，权重越高（冷号回补理论）
+  const missingWeight = (n) => Math.min(redMissing[n] / 10, 3); // 上限3倍
+  const hotWeight = (n) => hotReds.includes(n) ? 2.5 : warmReds.includes(n) ? 1.5 : 1;
+
   switch (strategy.weight) {
     case 'hot':
-      // 热号为主：3-4个热号 + 2-3个温号
-      const hotPick = pickRandom(hotReds, Math.min(4, hotReds.length));
-      const warmPick = pickRandom(warmReds, 6 - hotPick.length);
-      redBalls = [...hotPick, ...warmPick].slice(0, 6);
-      while (redBalls.length < 6) {
-        const r = Math.floor(Math.random() * 33) + 1;
-        if (!redBalls.includes(r)) redBalls.push(r);
+      {
+        // 热号为主：3-4个热号 + 其余从加权池补
+        const hotPick = pickRandom(hotReds, Math.min(4, hotReds.length));
+        const pool = [...hotReds, ...warmReds, ...missingReds];
+        const weighted = pool
+          .filter(n => !hotPick.includes(n))
+          .sort((a, b) => missingWeight(b) - missingWeight(a));
+        const warmPick = pickRandom(weighted.slice(0, Math.min(6, weighted.length)), 6 - hotPick.length);
+        redBalls = [...hotPick, ...warmPick].slice(0, 6);
+        redBalls = filterAndFix(redBalls, sumStats, acStats, digitStats, 'ssq');
+        reasons.push(`热号${hotPick.length}个：${hotPick.join(',')}`);
+        reasons.push('近10期高频号码，中奖概率较高');
       }
-      reasons.push(`热号${hotPick.length}个：${hotPick.join(',')}`);
-      reasons.push('近10期高频号码，中奖概率较高');
       break;
-      
+
     case 'balanced':
-      // 均衡型：2热+2温+2冷
-      const b1 = pickRandom(hotReds, Math.min(2, hotReds.length));
-      const b2 = pickRandom(warmReds, Math.min(2, warmReds.length));
-      const b3 = pickRandom(missingReds, Math.min(2, missingReds.length));
-      redBalls = [...b1, ...b2, ...b3];
-      while (redBalls.length < 6) {
-        const r = Math.floor(Math.random() * 33) + 1;
-        if (!redBalls.includes(r)) redBalls.push(r);
+      {
+        // 均衡型：2热+2温+2冷，各项指标约束
+        const b1 = pickRandom(hotReds, Math.min(2, hotReds.length));
+        const b2 = pickRandom(warmReds, Math.min(2, warmReds.length));
+        const b3 = pickRandom(missingReds, Math.min(2, missingReds.length));
+        redBalls = [...b1, ...b2, ...b3];
+        redBalls = filterAndFix(redBalls, sumStats, acStats, digitStats, 'ssq');
+        const oddC = redBalls.filter(n => n % 2 === 1).length;
+        if (oddC < 2 || oddC > 4) {
+          redBalls = rebalanceOddEven(redBalls, 3);
+          redBalls = filterAndFix(redBalls, sumStats, acStats, digitStats, 'ssq');
+        }
+        reasons.push('热温冷各取2个，平衡分布');
+        reasons.push('奇偶比3:3，最稳定组合');
+        reasons.push(`AC值${calcAC(redBalls)}，和值${redBalls.reduce((a,b)=>a+b,0)}`);
       }
-      reasons.push('热温冷各取2个，平衡分布');
-      // 确保奇偶平衡
-      const oddC = redBalls.filter(n => n % 2 === 1).length;
-      if (oddC < 2 || oddC > 4) {
-        redBalls = rebalanceOddEven(redBalls, 3);
-      }
-      reasons.push('奇偶比3:3，最稳定组合');
       break;
-      
+
     case 'cold':
-      // 冷号回补：重点选遗漏号
-      const coldPick = pickRandom(missingReds, Math.min(4, missingReds.length));
-      const coldWarm = pickRandom(warmReds, 6 - coldPick.length);
-      redBalls = [...coldPick, ...coldWarm];
-      while (redBalls.length < 6) {
-        const r = Math.floor(Math.random() * 33) + 1;
-        if (!redBalls.includes(r)) redBalls.push(r);
+      {
+        // 冷号回补：选遗漏大的球，配合遗漏约束
+        const sorted = [...missingReds, ...warmReds].sort((a, b) => missingWeight(b) - missingWeight(a));
+        const coldPick = sorted.slice(0, Math.min(4, sorted.length));
+        const pool = [...missingReds, ...warmReds, ...hotReds];
+        const extra = pickRandom(pool.filter(n => !coldPick.includes(n)), 6 - coldPick.length);
+        redBalls = [...coldPick, ...extra];
+        redBalls = filterAndFix(redBalls, sumStats, acStats, digitStats, 'ssq');
+        const maxMissing = Math.max(...redBalls.map(n => redMissing[n]));
+        reasons.push(`冷号回补，遗漏最大值${maxMissing}期`);
+        reasons.push('遗漏期数大的号码近期回补概率较高');
       }
-      reasons.push(`冷号${coldPick.length}个：遗漏回补`);
-      reasons.push('冷号长期未出，近期可能出现');
       break;
-      
+
     case 'consecutive':
-      // 连号组合：强制包含1-2组连号
-      redBalls = generateWithConsecutive(hotReds, warmReds);
-      reasons.push('含连号组合');
-      reasons.push(`近10期连号出现率${(consecutiveRate*100).toFixed(0)}%`);
+      {
+        // 连号组合：按历史出现率控制连号数量
+        redBalls = generateWithConsecutive(hotReds, warmReds, missingReds);
+        redBalls = filterAndFix(redBalls, sumStats, acStats, digitStats, 'ssq');
+        const hasConsec = hasConsecutive(redBalls) ? '有连号' : '无连号';
+        reasons.push(`${hasConsec}，历史出现率${(consecutiveRate*100).toFixed(0)}%`);
+      }
       break;
-      
+
     case 'zone':
-      // 区间精选：按三区分布
-      redBalls = generateByZone(hotReds, warmReds, missingReds, zoneCount);
-      const z1 = redBalls.filter(n => n <= 11).length;
-      const z2 = redBalls.filter(n => n > 11 && n <= 22).length;
-      const z3 = redBalls.filter(n => n > 22).length;
-      reasons.push(`三区比${z1}:${z2}:${z3}`);
-      reasons.push('区间分布均衡，覆盖面广');
+      {
+        // 区间精选：三区均衡 + 和值约束
+        redBalls = generateByZone(hotReds, warmReds, missingReds, zoneCount);
+        redBalls = filterAndFix(redBalls, sumStats, acStats, digitStats, 'ssq');
+        const z1 = redBalls.filter(n => n <= 11).length;
+        const z2 = redBalls.filter(n => n > 11 && n <= 22).length;
+        const z3 = redBalls.filter(n => n > 22).length;
+        reasons.push(`三区比${z1}:${z2}:${z3}`);
+        reasons.push('区间分布均衡，覆盖面广');
+        reasons.push(`和值${redBalls.reduce((a,b)=>a+b,0)}（历史高频区间${sumStats.peak}±15）`);
+      }
       break;
   }
-  
+
+  // 排序
   redBalls.sort((a, b) => a - b);
-  
-  // 蓝球：优先选热号
+
+  // 蓝球：热号优先 + 遗漏约束
   const hotBlues = [];
   for (let i = 1; i <= 16; i++) {
     if (blueFreq[i] >= 2) hotBlues.push(i);
@@ -264,7 +306,7 @@ function generateSSQSet(strategy, hotReds, warmReds, missingReds,
     blueBall = Math.floor(Math.random() * 16) + 1;
     reasons.push(`蓝球${blueBall}随机选取`);
   }
-  
+
   return {
     type: 'ssq',
     redBalls,
@@ -275,77 +317,94 @@ function generateSSQSet(strategy, hotReds, warmReds, missingReds,
 
 // ========== 大乐透生成 ==========
 function generateDLTSet(strategy, hotFronts, warmFronts, missingFronts,
-                        hotBacks, backFreq, consecutiveRate) {
+                        hotBacks, backFreq, consecutiveRate,
+                        frontMissing, backMissing, frontSumStats, frontACStats, frontDigitStats) {
   const reasons = [strategy.name + '策略'];
   let frontBalls = [];
   let backBalls = [];
-  
+
+  // 遗漏权重（前区）
+  const missingWeight = (n) => Math.min(frontMissing[n] / 8, 3);
+
   switch (strategy.weight) {
     case 'hot':
-      const fh = pickRandom(hotFronts, Math.min(3, hotFronts.length));
-      const fw = pickRandom(warmFronts, 5 - fh.length);
-      frontBalls = [...fh, ...fw];
-      while (frontBalls.length < 5) {
-        const r = Math.floor(Math.random() * 35) + 1;
-        if (!frontBalls.includes(r)) frontBalls.push(r);
+      {
+        const fh = pickRandom(hotFronts, Math.min(3, hotFronts.length));
+        const pool = [...hotFronts, ...warmFronts, ...missingFronts].sort((a, b) => missingWeight(b) - missingWeight(a));
+        const extra = pickRandom(pool.filter(n => !fh.includes(n)), 5 - fh.length);
+        frontBalls = [...fh, ...extra];
+        frontBalls = filterAndFix(frontBalls, frontSumStats, frontACStats, frontDigitStats, 'dlt');
+        reasons.push(`前区热号${fh.length}个`);
+        reasons.push(`AC值${calcAC(frontBalls)}`);
       }
-      reasons.push(`前区热号${fh.length}个`);
       break;
-      
+
     case 'balanced':
-      const b1 = pickRandom(hotFronts, 2);
-      const b2 = pickRandom(warmFronts, 2);
-      const b3 = pickRandom(missingFronts, 1);
-      frontBalls = [...b1, ...b2, ...b3];
-      while (frontBalls.length < 5) {
-        const r = Math.floor(Math.random() * 35) + 1;
-        if (!frontBalls.includes(r)) frontBalls.push(r);
+      {
+        const b1 = pickRandom(hotFronts, 2);
+        const b2 = pickRandom(warmFronts, 2);
+        const b3 = pickRandom(missingFronts, 1);
+        frontBalls = [...b1, ...b2, ...b3];
+        frontBalls = filterAndFix(frontBalls, frontSumStats, frontACStats, frontDigitStats, 'dlt');
+        reasons.push('前区热温冷均衡');
+        reasons.push(`和值${frontBalls.reduce((a,b)=>a+b,0)}（历史高频${frontSumStats.peak}±15）`);
       }
-      reasons.push('前区热温冷均衡');
       break;
-      
+
     case 'cold':
-      const c1 = pickRandom(missingFronts, Math.min(3, missingFronts.length));
-      const c2 = pickRandom(warmFronts, 5 - c1.length);
-      frontBalls = [...c1, ...c2];
-      while (frontBalls.length < 5) {
-        const r = Math.floor(Math.random() * 35) + 1;
-        if (!frontBalls.includes(r)) frontBalls.push(r);
+      {
+        const sorted = [...missingFronts, ...warmFronts].sort((a, b) => missingWeight(b) - missingWeight(a));
+        const coldPick = sorted.slice(0, Math.min(3, sorted.length));
+        const extra = pickRandom(sorted.filter(n => !coldPick.includes(n)), 5 - coldPick.length);
+        frontBalls = [...coldPick, ...extra];
+        frontBalls = filterAndFix(frontBalls, frontSumStats, frontACStats, frontDigitStats, 'dlt');
+        const maxMissing = Math.max(...frontBalls.map(n => frontMissing[n]));
+        reasons.push(`前区冷号回补，遗漏最大值${maxMissing}期`);
       }
-      reasons.push('前区冷号回补');
       break;
-      
+
     case 'consecutive':
-      frontBalls = generateDLTWithConsecutive(hotFronts, warmFronts);
-      reasons.push(`连号组合，出现率${(consecutiveRate*100).toFixed(0)}%`);
+      {
+        frontBalls = generateDLTWithConsecutive(hotFronts, warmFronts, missingFronts);
+        frontBalls = filterAndFix(frontBalls, frontSumStats, frontACStats, frontDigitStats, 'dlt');
+        const hasConsec = hasConsecutive(frontBalls) ? '有连号' : '无连号';
+        reasons.push(`${hasConsec}，出现率${(consecutiveRate*100).toFixed(0)}%`);
+      }
       break;
-      
+
     case 'sum':
-      // 和值在80-120之间
-      frontBalls = generateBySum(hotFronts, warmFronts, 80, 120);
-      const sum = frontBalls.reduce((a, b) => a + b, 0);
-      reasons.push(`和值${sum}，在黄金区间`);
+      {
+        // 和值在历史峰值±15区间内
+        frontBalls = generateBySumAdv(
+          hotFronts, warmFronts, missingFronts,
+          frontSumStats.peak - 15, frontSumStats.peak + 15,
+          frontMissing
+        );
+        frontBalls = filterAndFix(frontBalls, frontSumStats, frontACStats, frontDigitStats, 'dlt');
+        const sum = frontBalls.reduce((a, b) => a + b, 0);
+        reasons.push(`和值${sum}，在黄金区间${frontSumStats.peak}±15`);
+      }
       break;
   }
-  
+
   frontBalls.sort((a, b) => a - b);
-  
-  // 后区：优先热号
-  if (hotBacks.length >= 2) {
-    backBalls = pickRandom(hotBacks, 2);
-  } else if (hotBacks.length === 1) {
-    backBalls = [...hotBacks];
-    let r;
-    do {
-      r = Math.floor(Math.random() * 12) + 1;
-    } while (r === hotBacks[0]);
-    backBalls.push(r);
+
+  // 后区：热号优先 + 遗漏约束
+  const allBacks = Array.from({ length: 12 }, (_, i) => i + 1);
+  const hotBackPool = [...hotBacks];
+  const coldBackPool = allBacks.filter(n => !hotBacks.includes(n))
+    .sort((a, b) => backMissing[b] - backMissing[a]);
+
+  if (hotBackPool.length >= 2) {
+    backBalls = pickRandom(hotBackPool, 2);
+  } else if (hotBackPool.length === 1) {
+    backBalls = [hotBackPool[0], coldBackPool[0] || Math.floor(Math.random() * 12) + 1];
   } else {
-    backBalls = pickRandom([1,2,3,4,5,6,7,8,9,10,11,12], 2);
+    backBalls = [coldBackPool[0] || 1, coldBackPool[1] || 2];
   }
   backBalls.sort((a, b) => a - b);
   reasons.push(`后区${backBalls.join(',')}`);
-  
+
   return {
     type: 'dlt',
     frontBalls,
@@ -369,78 +428,371 @@ function hasConsecutive(arr) {
   return false;
 }
 
-function generateWithConsecutive(hotReds, warmReds) {
-  const result = [];
-  const all = [...hotReds, ...warmReds];
-  
-  // 随机选一个起始号作为连号
-  const start = Math.floor(Math.random() * 32) + 1;
-  result.push(start, start + 1);
-  
-  // 再补4个非连号
-  const remaining = all.filter(n => n !== start && n !== start + 1);
-  const extra = pickRandom(remaining.length > 0 ? remaining : 
-    Array.from({length: 31}, (_, i) => i + 1).filter(n => n !== start && n !== start + 1), 4);
-  result.push(...extra);
-  
-  while (result.length < 6) {
-    const r = Math.floor(Math.random() * 33) + 1;
-    if (!result.includes(r)) result.push(r);
+// ========== 新增统计函数 ==========
+
+/**
+ * 计算每个球的遗漏期数（最近N期未出现的次数）
+ * @param {number} min - 最小球号
+ * @param {number} max - 最大球号
+ * @param {Array} recentData - 最近N期数据
+ * @param {string} field - 字段名
+ * @returns {Object} - {球号: 遗漏期数}
+ */
+function computeMissingPeriods(min, max, recentData, field) {
+  const result = {};
+  for (let n = min; n <= max; n++) {
+    let missing = 0;
+    for (const record of recentData) {
+      const nums = record[field] || [];
+      if (!nums.includes(n)) {
+        missing++;
+      } else {
+        break; // 一旦出现，遗漏计数停止
+      }
+    }
+    result[n] = missing;
   }
-  
-  return result.slice(0, 6);
+  return result;
 }
 
-function generateDLTWithConsecutive(hotFronts, warmFronts) {
-  const result = [];
-  const start = Math.floor(Math.random() * 34) + 1;
-  result.push(start, start + 1);
-  
-  const all = [...hotFronts, ...warmFronts];
-  const remaining = all.filter(n => n !== start && n !== start + 1);
-  const extra = pickRandom(remaining.length > 0 ? remaining : 
-    Array.from({length: 33}, (_, i) => i + 1).filter(n => n !== start && n !== start + 1), 3);
-  result.push(...extra);
-  
-  while (result.length < 5) {
-    const r = Math.floor(Math.random() * 35) + 1;
+/**
+ * 计算AC值（号码复杂度）
+ * AC值 = 不同差值数量 / (号码数-1)
+ * SSQ有效范围: 8-10, 实际开奖常见8-10
+ * DLT前区有效范围: 6-10
+ */
+function calcAC(balls) {
+  if (!balls || balls.length < 2) return 0;
+  const diffs = new Set();
+  for (let i = 0; i < balls.length; i++) {
+    for (let j = i + 1; j < balls.length; j++) {
+      diffs.add(Math.abs(balls[i] - balls[j]));
+    }
+  }
+  return diffs.size - (balls.length - 1);
+}
+
+/**
+ * 从历史数据统计和值分布
+ * 返回：{峰值, 范围, 各区间命中数}
+ */
+function computeSumStats(recentData, field) {
+  if (recentData.length === 0) {
+    return { peak: 100, range: [70, 130] };
+  }
+  const sums = recentData.map(r => (r[field] || []).reduce((a, b) => a + b, 0));
+  const avgSum = sums.reduce((a, b) => a + b, 0) / sums.length;
+  // 统计分布
+  const ranges = {
+    '<70': 0, '70-89': 0, '90-109': 0, '110-130': 0, '>130': 0
+  };
+  sums.forEach(s => {
+    if (s < 70) ranges['<70']++;
+    else if (s <= 89) ranges['70-89']++;
+    else if (s <= 109) ranges['90-109']++;
+    else if (s <= 130) ranges['110-130']++;
+    else ranges['>130']++;
+  });
+  // 找最高频区间
+  const peak = Math.round(avgSum);
+  return { peak, ranges };
+}
+
+/**
+ * 从历史数据统计AC值分布
+ */
+function computeACStats(recentData, field) {
+  if (recentData.length === 0) {
+    return { peak: 9, validRange: [8, 10] };
+  }
+  const acValues = recentData.map(r => calcAC(r[field] || []));
+  const freq = {};
+  acValues.forEach(ac => { freq[ac] = (freq[ac] || 0) + 1; });
+  let peak = 9;
+  let maxCount = 0;
+  Object.entries(freq).forEach(([ac, count]) => {
+    if (count > maxCount) { maxCount = count; peak = parseInt(ac); }
+  });
+  return { peak, freq };
+}
+
+/**
+ * 从历史数据统计尾数出现频率
+ * @returns {Object} {尾数: 出现次数}
+ */
+function computeDigitStats(recentData, field) {
+  const digitFreq = {};
+  recentData.forEach(record => {
+    (record[field] || []).forEach(n => {
+      const d = n % 10;
+      digitFreq[d] = (digitFreq[d] || 0) + 1;
+    });
+  });
+  return digitFreq;
+}
+
+/**
+ * 核心过滤修复函数
+ * 对生成的红球组合做约束修正：
+ * 1. AC值约束：SSQ在[6,10]，DLT在[5,10]
+ * 2. 尾数约束：覆盖4种以上不同尾数
+ * 3. 和值约束：在历史峰值±20内
+ * 4. 连号约束：最多2组
+ */
+function filterAndFix(balls, sumStats, acStats, digitStats, type) {
+  const maxAttempts = 30;
+  let result = [...balls];
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const ac = calcAC(result);
+    const sum = result.reduce((a, b) => a + b, 0);
+    const digits = new Set(result.map(n => n % 10));
+    const consecutive = countConsecutivePairs(result);
+
+    // 约束条件
+    const acRange = type === 'ssq' ? [6, 11] : [5, 11];
+    const sumRange = [sumStats.peak - 20, sumStats.peak + 20];
+    const acOk = ac >= acRange[0] && ac <= acRange[1];
+    const sumOk = sum >= sumRange[0] && sum <= sumRange[1];
+    const digitOk = digits.size >= 4;
+    const consecOk = consecutive <= 2;
+
+    if (acOk && sumOk && digitOk && consecOk) {
+      break; // 全部满足
+    }
+
+    // 修复策略
+    if (!acOk) {
+      // AC值过低：替换最小/最大的球来增加差异
+      result = fixAC(result, acStats.peak);
+    }
+    if (!sumOk) {
+      // 和值过高/过低：替换边界球
+      result = fixSum(result, sumStats.peak);
+    }
+    if (!digitOk) {
+      // 尾数重复过多：替换以增加尾数种类
+      result = fixDigits(result, digitStats);
+    }
+    if (!consecOk) {
+      // 连号过多：拆分连号
+      result = fixConsecutive(result);
+    }
+  }
+
+  // 最终去重并排序
+  result = [...new Set(result)].sort((a, b) => a - b);
+
+  // 如果去重后数量不够，补充
+  const maxNum = type === 'ssq' ? 33 : 35;
+  const count = type === 'ssq' ? 6 : 5;
+  while (result.length < count) {
+    const r = Math.floor(Math.random() * maxNum) + 1;
     if (!result.includes(r)) result.push(r);
   }
-  
-  return result.slice(0, 5);
+
+  return result.slice(0, count);
+}
+
+function countConsecutivePairs(balls) {
+  const sorted = [...balls].sort((a, b) => a - b);
+  let pairs = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (sorted[i + 1] - sorted[i] === 1) pairs++;
+  }
+  return pairs;
+}
+
+function fixAC(balls, targetAC) {
+  const result = [...balls];
+  const currentAC = calcAC(result);
+  if (currentAC < 6) {
+    // AC过低：替换最内侧的球，往外扩
+    const sorted = [...result].sort((a, b) => a - b);
+    const maxNum = balls.length === 6 ? 33 : 35;
+    const minNum = 1;
+    const mid = Math.floor(sorted.length / 2);
+    // 替换中间偏小的球，往大方向移动
+    const idx = result.indexOf(sorted[mid]);
+    let newVal = sorted[mid] + 2;
+    while (result.includes(newVal) && newVal <= maxNum) newVal++;
+    if (newVal <= maxNum) result[idx] = newVal;
+  } else if (currentAC > 10) {
+    // AC过高：替换最大或最小球，往中间靠
+    const sorted = [...result].sort((a, b) => a - b);
+    const idx = result.indexOf(sorted[0]);
+    let newVal = sorted[0] + 1;
+    while (result.includes(newVal)) newVal++;
+    if (newVal <= 15) result[idx] = newVal;
+  }
+  return [...new Set(result)];
+}
+
+function fixSum(balls, targetSum) {
+  const result = [...balls];
+  const currentSum = result.reduce((a, b) => a + b, 0);
+  const diff = targetSum - currentSum;
+  const maxNum = balls.length === 6 ? 33 : 35;
+
+  if (diff > 0) {
+    // 和值偏低：把一个较小的球换大
+    const sorted = [...result].sort((a, b) => a - b);
+    const idx = result.indexOf(sorted[0]);
+    let newVal = sorted[0] + Math.min(diff, 5);
+    while (result.includes(newVal) && newVal <= maxNum) newVal++;
+    if (newVal <= maxNum && !result.includes(newVal)) result[idx] = newVal;
+  } else {
+    // 和值偏高：把一个较大的球换小
+    const sorted = [...result].sort((a, b) => b - a);
+    const idx = result.indexOf(sorted[0]);
+    let newVal = sorted[0] + diff;
+    while (result.includes(newVal) && newVal >= 1) newVal--;
+    if (newVal >= 1 && !result.includes(newVal)) result[idx] = newVal;
+  }
+  return [...new Set(result)];
+}
+
+function fixDigits(balls, digitStats) {
+  const result = [...balls];
+  const digits = new Set(result.map(n => n % 10));
+
+  // 找出缺少的尾数
+  const usedDigits = [...digits];
+  const maxNum = balls.length === 6 ? 33 : 35;
+  for (let d = 0; d <= 9 && digits.size < 4; d++) {
+    if (!digits.has(d)) {
+      // 找一个有该尾数的球来替换
+      const candidate = result.find(n => {
+        const curD = n % 10;
+        return !digits.has(curD) || [...digits].filter(x => x === curD).length > 1;
+      });
+      if (candidate !== undefined) {
+        const idx = result.indexOf(candidate);
+        // 找一个有目标尾数的号
+        let newVal = d;
+        while ((result.includes(newVal) || newVal > maxNum) && newVal <= maxNum) newVal += 10;
+        if (newVal <= maxNum && !result.includes(newVal)) {
+          result[idx] = newVal;
+          digits.add(d);
+        }
+      }
+    }
+  }
+  return [...new Set(result)];
+}
+
+function fixConsecutive(balls) {
+  const result = [...balls].sort((a, b) => a - b);
+  // 找到第一组连号，拆分
+  for (let i = 0; i < result.length - 1; i++) {
+    if (result[i + 1] - result[i] === 1) {
+      const maxNum = balls.length === 6 ? 33 : 35;
+      let newVal = result[i] + 5;
+      while (result.includes(newVal) && newVal <= maxNum) newVal++;
+      if (newVal <= maxNum) {
+        result[i + 1] = newVal;
+        break;
+      }
+    }
+  }
+  return [...new Set(result)];
+}
+
+// ========== 生成函数（增强版）==========
+
+function generateWithConsecutive(hotReds, warmReds, missingReds) {
+  const result = [];
+  const maxNum = 33;
+  const start = Math.floor(Math.random() * 28) + 1;
+  result.push(start, start + 1);
+
+  const pool = [...hotReds, ...warmReds, ...missingReds]
+    .filter(n => n !== start && n !== start + 1);
+  const extra = pickRandom(pool.length > 0 ? pool :
+    Array.from({ length: 31 }, (_, i) => i + 1).filter(n => n !== start && n !== start + 1), 4);
+  result.push(...extra);
+
+  while (result.length < 6) {
+    const r = Math.floor(Math.random() * maxNum) + 1;
+    if (!result.includes(r)) result.push(r);
+  }
+
+  return [...new Set(result)].slice(0, 6);
+}
+
+function generateDLTWithConsecutive(hotFronts, warmFronts, missingFronts) {
+  const result = [];
+  const maxNum = 35;
+  const start = Math.floor(Math.random() * 30) + 1;
+  result.push(start, start + 1);
+
+  const pool = [...hotFronts, ...warmFronts, ...missingFronts]
+    .filter(n => n !== start && n !== start + 1);
+  const extra = pickRandom(pool.length > 0 ? pool :
+    Array.from({ length: 33 }, (_, i) => i + 1).filter(n => n !== start && n !== start + 1), 3);
+  result.push(...extra);
+
+  while (result.length < 5) {
+    const r = Math.floor(Math.random() * maxNum) + 1;
+    if (!result.includes(r)) result.push(r);
+  }
+
+  return [...new Set(result)].slice(0, 5);
 }
 
 function generateByZone(hotReds, warmReds, missingReds, zoneCount) {
   const result = [];
-  
-  // 根据历史区间分布决定各区间选几个
-  const total = zoneCount[0] + zoneCount[1] + zoneCount[2];
-  const target = [2, 2, 2]; // 默认均衡
-  
-  // 一区
+  const maxNum = 33;
+
+  // 一区 1-11
   const z1Pool = [...hotReds, ...warmReds, ...missingReds].filter(n => n <= 11);
-  result.push(...pickRandom(z1Pool.length > 0 ? z1Pool : Array.from({length: 11}, (_, i) => i + 1), 2));
-  
-  // 二区
+  result.push(...pickRandom(z1Pool.length > 0 ? z1Pool : Array.from({ length: 11 }, (_, i) => i + 1), 2));
+
+  // 二区 12-22
   const z2Pool = [...hotReds, ...warmReds, ...missingReds].filter(n => n > 11 && n <= 22);
-  result.push(...pickRandom(z2Pool.length > 0 ? z2Pool : Array.from({length: 11}, (_, i) => i + 12), 2));
-  
-  // 三区
+  result.push(...pickRandom(z2Pool.length > 0 ? z2Pool : Array.from({ length: 11 }, (_, i) => i + 12), 2));
+
+  // 三区 23-33
   const z3Pool = [...hotReds, ...warmReds, ...missingReds].filter(n => n > 22);
-  result.push(...pickRandom(z3Pool.length > 0 ? z3Pool : Array.from({length: 11}, (_, i) => i + 23), 2));
-  
+  result.push(...pickRandom(z3Pool.length > 0 ? z3Pool : Array.from({ length: 11 }, (_, i) => i + 23), 2));
+
   while (result.length < 6) {
-    const r = Math.floor(Math.random() * 33) + 1;
+    const r = Math.floor(Math.random() * maxNum) + 1;
     if (!result.includes(r)) result.push(r);
   }
-  
-  return result.slice(0, 6);
+
+  return [...new Set(result)].slice(0, 6);
+}
+
+function generateBySumAdv(hotFronts, warmFronts, missingFronts, minSum, maxSum, frontMissing) {
+  const targetSum = Math.round((minSum + maxSum) / 2);
+  let best = null;
+  let bestDiff = Infinity;
+  const maxNum = 35;
+  const pool = [...hotFronts, ...warmFronts, ...missingFronts];
+
+  for (let attempt = 0; attempt < 80; attempt++) {
+    let picked = pickRandom(pool.length >= 5 ? pool :
+      Array.from({ length: 35 }, (_, i) => i + 1), 5);
+    while (picked.length < 5) {
+      const r = Math.floor(Math.random() * maxNum) + 1;
+      if (!picked.includes(r)) picked.push(r);
+    }
+    const sum = picked.reduce((a, b) => a + b, 0);
+    const diff = Math.abs(sum - targetSum);
+    if (sum >= minSum && sum <= maxSum && diff < bestDiff) {
+      best = picked;
+      bestDiff = diff;
+      if (diff === 0) break;
+    }
+  }
+  return best || pickRandom(Array.from({ length: 35 }, (_, i) => i + 1), 5);
 }
 
 function rebalanceOddEven(balls, targetOdd) {
   const result = [...balls];
   let oddCount = result.filter(n => n % 2 === 1).length;
-  
+
   while (oddCount < targetOdd) {
     const evenIdx = result.findIndex(n => n % 2 === 0);
     if (evenIdx === -1) break;
@@ -450,7 +802,7 @@ function rebalanceOddEven(balls, targetOdd) {
       oddCount++;
     } else break;
   }
-  
+
   while (oddCount > targetOdd) {
     const oddIdx = result.findIndex(n => n % 2 === 1);
     if (oddIdx === -1) break;
@@ -460,7 +812,7 @@ function rebalanceOddEven(balls, targetOdd) {
       oddCount--;
     } else break;
   }
-  
+
   return result;
 }
 
@@ -476,30 +828,4 @@ function findEvenNotIn(arr) {
     if (!arr.includes(i)) return i;
   }
   return null;
-}
-
-function generateBySum(hotFronts, warmFronts, minSum, maxSum) {
-  let best = null;
-  let bestDiff = Infinity;
-  
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const all = [...hotFronts, ...warmFronts];
-    const picked = pickRandom(all.length >= 5 ? all : Array.from({length: 35}, (_, i) => i + 1), 5);
-    
-    while (picked.length < 5) {
-      const r = Math.floor(Math.random() * 35) + 1;
-      if (!picked.includes(r)) picked.push(r);
-    }
-    
-    const sum = picked.reduce((a, b) => a + b, 0);
-    const targetSum = (minSum + maxSum) / 2;
-    const diff = Math.abs(sum - targetSum);
-    
-    if (sum >= minSum && sum <= maxSum && diff < bestDiff) {
-      best = picked;
-      bestDiff = diff;
-    }
-  }
-  
-  return best || pickRandom(Array.from({length: 35}, (_, i) => i + 1), 5);
 }

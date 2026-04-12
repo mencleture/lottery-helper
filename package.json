@@ -1,0 +1,57 @@
+{
+  "name": "lottery-app",
+  "version": "1.0.0",
+  "description": "彩票开奖记录查询与号码推荐",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "build": "electron-builder --win",
+    "build:dir": "electron-builder --win --dir"
+  },
+  "keywords": [
+    "lottery",
+    "彩票",
+    "双色球",
+    "大乐透"
+  ],
+  "author": "QClaw",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.qclaw.lottery",
+    "productName": "彩票助手",
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "directories": {
+      "output": "dist2"
+    },
+    "files": [
+      "main.js",
+      "index.html",
+      "renderer.js",
+      "styles.css",
+      "preload.js"
+    ]
+  }
+}

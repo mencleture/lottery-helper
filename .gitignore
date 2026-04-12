@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist2/
+win-unpacked/
+
+# Temp
+temp_extract/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

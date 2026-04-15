@@ -4,5 +4,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   fetchLotteryData: (lotteryType) => ipcRenderer.invoke('fetch-lottery-data', lotteryType),
   getRecommendation: (lotteryType, historyData) => ipcRenderer.invoke('get-recommendation', lotteryType, historyData),
-  exportHistoryData: (lotteryType, historyData) => ipcRenderer.invoke('export-history-data', lotteryType, historyData)
+  exportHistoryData: (lotteryType, historyData) => ipcRenderer.invoke('export-history-data', lotteryType, historyData),
+  getStatsAnalysis: (lotteryType) => ipcRenderer.invoke('get-stats-analysis', lotteryType)
 });

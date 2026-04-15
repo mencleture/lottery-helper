@@ -1,0 +1,2822 @@
+[
+  {
+    "period": "25001",
+    "date": "2025-01-01",
+    "frontNumbers": [
+      5,
+      8,
+      16,
+      17,
+      27
+    ],
+    "backNumbers": [
+      4,
+      7
+    ]
+  },
+  {
+    "period": "25002",
+    "date": "2025-01-04",
+    "frontNumbers": [
+      19,
+      21,
+      22,
+      28,
+      32
+    ],
+    "backNumbers": [
+      6,
+      9
+    ]
+  },
+  {
+    "period": "25003",
+    "date": "2025-01-06",
+    "frontNumbers": [
+      10,
+      25,
+      30,
+      32,
+      34
+    ],
+    "backNumbers": [
+      4,
+      10
+    ]
+  },
+  {
+    "period": "25004",
+    "date": "2025-01-08",
+    "frontNumbers": [
+      2,
+      5,
+      9,
+      13,
+      33
+    ],
+    "backNumbers": [
+      1,
+      7
+    ]
+  },
+  {
+    "period": "25005",
+    "date": "2025-01-11",
+    "frontNumbers": [
+      5,
+      6,
+      8,
+      31,
+      32
+    ],
+    "backNumbers": [
+      9,
+      11
+    ]
+  },
+  {
+    "period": "25006",
+    "date": "2025-01-13",
+    "frontNumbers": [
+      3,
+      4,
+      13,
+      19,
+      35
+    ],
+    "backNumbers": [
+      3,
+      10
+    ]
+  },
+  {
+    "period": "25007",
+    "date": "2025-01-15",
+    "frontNumbers": [
+      15,
+      22,
+      23,
+      25,
+      31
+    ],
+    "backNumbers": [
+      1,
+      9
+    ]
+  },
+  {
+    "period": "25008",
+    "date": "2025-01-18",
+    "frontNumbers": [
+      1,
+      5,
+      7,
+      13,
+      35
+    ],
+    "backNumbers": [
+      5,
+      12
+    ]
+  },
+  {
+    "period": "25009",
+    "date": "2025-01-20",
+    "frontNumbers": [
+      3,
+      19,
+      21,
+      30,
+      32
+    ],
+    "backNumbers": [
+      6,
+      9
+    ]
+  },
+  {
+    "period": "25010",
+    "date": "2025-01-22",
+    "frontNumbers": [
+      5,
+      21,
+      28,
+      30,
+      32
+    ],
+    "backNumbers": [
+      7,
+      12
+    ]
+  },
+  {
+    "period": "25011",
+    "date": "2025-01-25",
+    "frontNumbers": [
+      3,
+      6,
+      7,
+      11,
+      27
+    ],
+    "backNumbers": [
+      2,
+      8
+    ]
+  },
+  {
+    "period": "25012",
+    "date": "2025-02-08",
+    "frontNumbers": [
+      2,
+      18,
+      19,
+      21,
+      25
+    ],
+    "backNumbers": [
+      2,
+      11
+    ]
+  },
+  {
+    "period": "25013",
+    "date": "2025-02-10",
+    "frontNumbers": [
+      14,
+      16,
+      18,
+      20,
+      35
+    ],
+    "backNumbers": [
+      2,
+      5
+    ]
+  },
+  {
+    "period": "25014",
+    "date": "2025-02-12",
+    "frontNumbers": [
+      5,
+      19,
+      22,
+      29,
+      35
+    ],
+    "backNumbers": [
+      2,
+      10
+    ]
+  },
+  {
+    "period": "25015",
+    "date": "2025-02-15",
+    "frontNumbers": [
+      7,
+      10,
+      24,
+      31,
+      35
+    ],
+    "backNumbers": [
+      1,
+      8
+    ]
+  },
+  {
+    "period": "25016",
+    "date": "2025-02-17",
+    "frontNumbers": [
+      5,
+      7,
+      12,
+      20,
+      29
+    ],
+    "backNumbers": [
+      8,
+      12
+    ]
+  },
+  {
+    "period": "25017",
+    "date": "2025-02-19",
+    "frontNumbers": [
+      10,
+      12,
+      26,
+      28,
+      31
+    ],
+    "backNumbers": [
+      3,
+      10
+    ]
+  },
+  {
+    "period": "25018",
+    "date": "2025-02-22",
+    "frontNumbers": [
+      1,
+      7,
+      9,
+      20,
+      28
+    ],
+    "backNumbers": [
+      1,
+      4
+    ]
+  },
+  {
+    "period": "25019",
+    "date": "2025-02-24",
+    "frontNumbers": [
+      7,
+      8,
+      11,
+      18,
+      23
+    ],
+    "backNumbers": [
+      3,
+      11
+    ]
+  },
+  {
+    "period": "25020",
+    "date": "2025-02-26",
+    "frontNumbers": [
+      1,
+      9,
+      12,
+      22,
+      29
+    ],
+    "backNumbers": [
+      5,
+      9
+    ]
+  },
+  {
+    "period": "25021",
+    "date": "2025-03-01",
+    "frontNumbers": [
+      10,
+      18,
+      25,
+      30,
+      35
+    ],
+    "backNumbers": [
+      3,
+      12
+    ]
+  },
+  {
+    "period": "25022",
+    "date": "2025-03-03",
+    "frontNumbers": [
+      1,
+      11,
+      13,
+      27,
+      29
+    ],
+    "backNumbers": [
+      4,
+      10
+    ]
+  },
+  {
+    "period": "25023",
+    "date": "2025-03-05",
+    "frontNumbers": [
+      10,
+      20,
+      22,
+      24,
+      25
+    ],
+    "backNumbers": [
+      9,
+      12
+    ]
+  },
+  {
+    "period": "25024",
+    "date": "2025-03-08",
+    "frontNumbers": [
+      6,
+      12,
+      13,
+      16,
+      23
+    ],
+    "backNumbers": [
+      5,
+      8
+    ]
+  },
+  {
+    "period": "25025",
+    "date": "2025-03-10",
+    "frontNumbers": [
+      3,
+      6,
+      8,
+      10,
+      25
+    ],
+    "backNumbers": [
+      3,
+      7
+    ]
+  },
+  {
+    "period": "25026",
+    "date": "2025-03-12",
+    "frontNumbers": [
+      2,
+      3,
+      7,
+      17,
+      30
+    ],
+    "backNumbers": [
+      1,
+      9
+    ]
+  },
+  {
+    "period": "25027",
+    "date": "2025-03-15",
+    "frontNumbers": [
+      3,
+      6,
+      11,
+      13,
+      20
+    ],
+    "backNumbers": [
+      1,
+      11
+    ]
+  },
+  {
+    "period": "25028",
+    "date": "2025-03-17",
+    "frontNumbers": [
+      6,
+      8,
+      20,
+      25,
+      29
+    ],
+    "backNumbers": [
+      3,
+      7
+    ]
+  },
+  {
+    "period": "25029",
+    "date": "2025-03-19",
+    "frontNumbers": [
+      5,
+      9,
+      26,
+      31,
+      33
+    ],
+    "backNumbers": [
+      3,
+      10
+    ]
+  },
+  {
+    "period": "25030",
+    "date": "2025-03-22",
+    "frontNumbers": [
+      3,
+      9,
+      14,
+      24,
+      28
+    ],
+    "backNumbers": [
+      6,
+      7
+    ]
+  },
+  {
+    "period": "25031",
+    "date": "2025-03-24",
+    "frontNumbers": [
+      14,
+      18,
+      20,
+      25,
+      35
+    ],
+    "backNumbers": [
+      1,
+      7
+    ]
+  },
+  {
+    "period": "25032",
+    "date": "2025-03-26",
+    "frontNumbers": [
+      12,
+      22,
+      25,
+      27,
+      28
+    ],
+    "backNumbers": [
+      1,
+      2
+    ]
+  },
+  {
+    "period": "25033",
+    "date": "2025-03-29",
+    "frontNumbers": [
+      1,
+      2,
+      8,
+      10,
+      33
+    ],
+    "backNumbers": [
+      10,
+      12
+    ]
+  },
+  {
+    "period": "25034",
+    "date": "2025-03-31",
+    "frontNumbers": [
+      4,
+      15,
+      22,
+      28,
+      33
+    ],
+    "backNumbers": [
+      6,
+      8
+    ]
+  },
+  {
+    "period": "25035",
+    "date": "2025-04-02",
+    "frontNumbers": [
+      22,
+      25,
+      28,
+      29,
+      30
+    ],
+    "backNumbers": [
+      4,
+      8
+    ]
+  },
+  {
+    "period": "25036",
+    "date": "2025-04-05",
+    "frontNumbers": [
+      4,
+      7,
+      13,
+      27,
+      30
+    ],
+    "backNumbers": [
+      2,
+      6
+    ]
+  },
+  {
+    "period": "25037",
+    "date": "2025-04-07",
+    "frontNumbers": [
+      5,
+      20,
+      23,
+      27,
+      31
+    ],
+    "backNumbers": [
+      4,
+      6
+    ]
+  },
+  {
+    "period": "25038",
+    "date": "2025-04-09",
+    "frontNumbers": [
+      7,
+      8,
+      20,
+      26,
+      34
+    ],
+    "backNumbers": [
+      8,
+      9
+    ]
+  },
+  {
+    "period": "25039",
+    "date": "2025-04-12",
+    "frontNumbers": [
+      3,
+      7,
+      14,
+      15,
+      19
+    ],
+    "backNumbers": [
+      6,
+      10
+    ]
+  },
+  {
+    "period": "25040",
+    "date": "2025-04-14",
+    "frontNumbers": [
+      2,
+      8,
+      16,
+      31,
+      32
+    ],
+    "backNumbers": [
+      4,
+      12
+    ]
+  },
+  {
+    "period": "25041",
+    "date": "2025-04-16",
+    "frontNumbers": [
+      3,
+      4,
+      21,
+      22,
+      27
+    ],
+    "backNumbers": [
+      5,
+      11
+    ]
+  },
+  {
+    "period": "25042",
+    "date": "2025-04-19",
+    "frontNumbers": [
+      6,
+      8,
+      11,
+      18,
+      20
+    ],
+    "backNumbers": [
+      5,
+      11
+    ]
+  },
+  {
+    "period": "25043",
+    "date": "2025-04-21",
+    "frontNumbers": [
+      3,
+      16,
+      20,
+      21,
+      27
+    ],
+    "backNumbers": [
+      9,
+      11
+    ]
+  },
+  {
+    "period": "25044",
+    "date": "2025-04-23",
+    "frontNumbers": [
+      15,
+      17,
+      21,
+      22,
+      26
+    ],
+    "backNumbers": [
+      2,
+      8
+    ]
+  },
+  {
+    "period": "25045",
+    "date": "2025-04-26",
+    "frontNumbers": [
+      8,
+      11,
+      21,
+      23,
+      27
+    ],
+    "backNumbers": [
+      3,
+      8
+    ]
+  },
+  {
+    "period": "25046",
+    "date": "2025-04-28",
+    "frontNumbers": [
+      4,
+      10,
+      15,
+      20,
+      34
+    ],
+    "backNumbers": [
+      4,
+      7
+    ]
+  },
+  {
+    "period": "25047",
+    "date": "2025-04-30",
+    "frontNumbers": [
+      3,
+      10,
+      11,
+      12,
+      21
+    ],
+    "backNumbers": [
+      2,
+      3
+    ]
+  },
+  {
+    "period": "25048",
+    "date": "2025-05-03",
+    "frontNumbers": [
+      2,
+      6,
+      17,
+      23,
+      35
+    ],
+    "backNumbers": [
+      6,
+      11
+    ]
+  },
+  {
+    "period": "25049",
+    "date": "2025-05-05",
+    "frontNumbers": [
+      9,
+      20,
+      22,
+      29,
+      34
+    ],
+    "backNumbers": [
+      3,
+      8
+    ]
+  },
+  {
+    "period": "25050",
+    "date": "2025-05-07",
+    "frontNumbers": [
+      15,
+      18,
+      20,
+      21,
+      34
+    ],
+    "backNumbers": [
+      4,
+      10
+    ]
+  },
+  {
+    "period": "25051",
+    "date": "2025-05-10",
+    "frontNumbers": [
+      2,
+      4,
+      13,
+      29,
+      31
+    ],
+    "backNumbers": [
+      5,
+      12
+    ]
+  },
+  {
+    "period": "25052",
+    "date": "2025-05-12",
+    "frontNumbers": [
+      2,
+      4,
+      11,
+      29,
+      30
+    ],
+    "backNumbers": [
+      2,
+      8
+    ]
+  },
+  {
+    "period": "25053",
+    "date": "2025-05-14",
+    "frontNumbers": [
+      14,
+      23,
+      29,
+      30,
+      33
+    ],
+    "backNumbers": [
+      6,
+      12
+    ]
+  },
+  {
+    "period": "25054",
+    "date": "2025-05-17",
+    "frontNumbers": [
+      3,
+      12,
+      16,
+      21,
+      29
+    ],
+    "backNumbers": [
+      1,
+      2
+    ]
+  },
+  {
+    "period": "25055",
+    "date": "2025-05-19",
+    "frontNumbers": [
+      8,
+      10,
+      25,
+      29,
+      30
+    ],
+    "backNumbers": [
+      1,
+      2
+    ]
+  },
+  {
+    "period": "25056",
+    "date": "2025-05-21",
+    "frontNumbers": [
+      12,
+      15,
+      28,
+      29,
+      32
+    ],
+    "backNumbers": [
+      8,
+      11
+    ]
+  },
+  {
+    "period": "25057",
+    "date": "2025-05-24",
+    "frontNumbers": [
+      9,
+      10,
+      11,
+      12,
+      29
+    ],
+    "backNumbers": [
+      1,
+      10
+    ]
+  },
+  {
+    "period": "25058",
+    "date": "2025-05-26",
+    "frontNumbers": [
+      6,
+      11,
+      15,
+      21,
+      23
+    ],
+    "backNumbers": [
+      1,
+      7
+    ]
+  },
+  {
+    "period": "25059",
+    "date": "2025-05-28",
+    "frontNumbers": [
+      3,
+      9,
+      10,
+      11,
+      26
+    ],
+    "backNumbers": [
+      1,
+      2
+    ]
+  },
+  {
+    "period": "25060",
+    "date": "2025-05-31",
+    "frontNumbers": [
+      12,
+      14,
+      19,
+      33,
+      34
+    ],
+    "backNumbers": [
+      1,
+      7
+    ]
+  },
+  {
+    "period": "25061",
+    "date": "2025-06-02",
+    "frontNumbers": [
+      2,
+      11,
+      16,
+      23,
+      28
+    ],
+    "backNumbers": [
+      5,
+      10
+    ]
+  },
+  {
+    "period": "25062",
+    "date": "2025-06-04",
+    "frontNumbers": [
+      14,
+      20,
+      27,
+      28,
+      29
+    ],
+    "backNumbers": [
+      6,
+      10
+    ]
+  },
+  {
+    "period": "25063",
+    "date": "2025-06-07",
+    "frontNumbers": [
+      5,
+      18,
+      26,
+      29,
+      32
+    ],
+    "backNumbers": [
+      7,
+      10
+    ]
+  },
+  {
+    "period": "25064",
+    "date": "2025-06-09",
+    "frontNumbers": [
+      5,
+      10,
+      18,
+      20,
+      34
+    ],
+    "backNumbers": [
+      1,
+      8
+    ]
+  },
+  {
+    "period": "25065",
+    "date": "2025-06-11",
+    "frontNumbers": [
+      7,
+      25,
+      32,
+      33,
+      35
+    ],
+    "backNumbers": [
+      4,
+      9
+    ]
+  },
+  {
+    "period": "25066",
+    "date": "2025-06-14",
+    "frontNumbers": [
+      15,
+      18,
+      27,
+      28,
+      34
+    ],
+    "backNumbers": [
+      3,
+      6
+    ]
+  },
+  {
+    "period": "25067",
+    "date": "2025-06-16",
+    "frontNumbers": [
+      6,
+      10,
+      12,
+      21,
+      22
+    ],
+    "backNumbers": [
+      1,
+      6
+    ]
+  },
+  {
+    "period": "25068",
+    "date": "2025-06-18",
+    "frontNumbers": [
+      1,
+      4,
+      17,
+      20,
+      22
+    ],
+    "backNumbers": [
+      4,
+      10
+    ]
+  },
+  {
+    "period": "25069",
+    "date": "2025-06-21",
+    "frontNumbers": [
+      4,
+      6,
+      7,
+      33,
+      34
+    ],
+    "backNumbers": [
+      9,
+      10
+    ]
+  },
+  {
+    "period": "25070",
+    "date": "2025-06-23",
+    "frontNumbers": [
+      8,
+      9,
+      15,
+      20,
+      22
+    ],
+    "backNumbers": [
+      4,
+      12
+    ]
+  },
+  {
+    "period": "25071",
+    "date": "2025-06-25",
+    "frontNumbers": [
+      1,
+      8,
+      25,
+      31,
+      33
+    ],
+    "backNumbers": [
+      5,
+      11
+    ]
+  },
+  {
+    "period": "25072",
+    "date": "2025-06-28",
+    "frontNumbers": [
+      4,
+      7,
+      15,
+      24,
+      29
+    ],
+    "backNumbers": [
+      1,
+      4
+    ]
+  },
+  {
+    "period": "25073",
+    "date": "2025-06-30",
+    "frontNumbers": [
+      1,
+      4,
+      17,
+      33,
+      34
+    ],
+    "backNumbers": [
+      3,
+      9
+    ]
+  },
+  {
+    "period": "25074",
+    "date": "2025-07-02",
+    "frontNumbers": [
+      2,
+      11,
+      15,
+      18,
+      21
+    ],
+    "backNumbers": [
+      5,
+      10
+    ]
+  },
+  {
+    "period": "25075",
+    "date": "2025-07-05",
+    "frontNumbers": [
+      8,
+      12,
+      16,
+      19,
+      35
+    ],
+    "backNumbers": [
+      6,
+      9
+    ]
+  },
+  {
+    "period": "25076",
+    "date": "2025-07-07",
+    "frontNumbers": [
+      11,
+      18,
+      22,
+      25,
+      29
+    ],
+    "backNumbers": [
+      4,
+      12
+    ]
+  },
+  {
+    "period": "25077",
+    "date": "2025-07-09",
+    "frontNumbers": [
+      12,
+      14,
+      16,
+      19,
+      28
+    ],
+    "backNumbers": [
+      1,
+      4
+    ]
+  },
+  {
+    "period": "25078",
+    "date": "2025-07-12",
+    "frontNumbers": [
+      7,
+      10,
+      15,
+      21,
+      24
+    ],
+    "backNumbers": [
+      5,
+      6
+    ]
+  },
+  {
+    "period": "25079",
+    "date": "2025-07-14",
+    "frontNumbers": [
+      2,
+      14,
+      32,
+      34,
+      35
+    ],
+    "backNumbers": [
+      5,
+      11
+    ]
+  },
+  {
+    "period": "25080",
+    "date": "2025-07-16",
+    "frontNumbers": [
+      9,
+      10,
+      18,
+      22,
+      24
+    ],
+    "backNumbers": [
+      3,
+      12
+    ]
+  },
+  {
+    "period": "25081",
+    "date": "2025-07-19",
+    "frontNumbers": [
+      1,
+      4,
+      6,
+      15,
+      18
+    ],
+    "backNumbers": [
+      2,
+      3
+    ]
+  },
+  {
+    "period": "25082",
+    "date": "2025-07-21",
+    "frontNumbers": [
+      2,
+      3,
+      4,
+      12,
+      26
+    ],
+    "backNumbers": [
+      1,
+      8
+    ]
+  },
+  {
+    "period": "25083",
+    "date": "2025-07-23",
+    "frontNumbers": [
+      12,
+      17,
+      18,
+      20,
+      34
+    ],
+    "backNumbers": [
+      2,
+      5
+    ]
+  },
+  {
+    "period": "25084",
+    "date": "2025-07-26",
+    "frontNumbers": [
+      9,
+      11,
+      13,
+      18,
+      29
+    ],
+    "backNumbers": [
+      4,
+      11
+    ]
+  },
+  {
+    "period": "25085",
+    "date": "2025-07-28",
+    "frontNumbers": [
+      2,
+      5,
+      9,
+      14,
+      33
+    ],
+    "backNumbers": [
+      4,
+      9
+    ]
+  },
+  {
+    "period": "25086",
+    "date": "2025-07-30",
+    "frontNumbers": [
+      2,
+      6,
+      23,
+      24,
+      33
+    ],
+    "backNumbers": [
+      1,
+      10
+    ]
+  },
+  {
+    "period": "25087",
+    "date": "2025-08-02",
+    "frontNumbers": [
+      5,
+      13,
+      14,
+      16,
+      20
+    ],
+    "backNumbers": [
+      3,
+      8
+    ]
+  },
+  {
+    "period": "25088",
+    "date": "2025-08-04",
+    "frontNumbers": [
+      8,
+      9,
+      10,
+      11,
+      35
+    ],
+    "backNumbers": [
+      5,
+      11
+    ]
+  },
+  {
+    "period": "25089",
+    "date": "2025-08-06",
+    "frontNumbers": [
+      2,
+      11,
+      12,
+      32,
+      34
+    ],
+    "backNumbers": [
+      3,
+      10
+    ]
+  },
+  {
+    "period": "25090",
+    "date": "2025-08-09",
+    "frontNumbers": [
+      6,
+      14,
+      19,
+      22,
+      27
+    ],
+    "backNumbers": [
+      1,
+      4
+    ]
+  },
+  {
+    "period": "25091",
+    "date": "2025-08-11",
+    "frontNumbers": [
+      1,
+      19,
+      22,
+      25,
+      27
+    ],
+    "backNumbers": [
+      3,
+      10
+    ]
+  },
+  {
+    "period": "25092",
+    "date": "2025-08-13",
+    "frontNumbers": [
+      4,
+      10,
+      17,
+      25,
+      32
+    ],
+    "backNumbers": [
+      5,
+      7
+    ]
+  },
+  {
+    "period": "25093",
+    "date": "2025-08-16",
+    "frontNumbers": [
+      1,
+      7,
+      9,
+      16,
+      30
+    ],
+    "backNumbers": [
+      2,
+      5
+    ]
+  },
+  {
+    "period": "25094",
+    "date": "2025-08-18",
+    "frontNumbers": [
+      4,
+      9,
+      17,
+      30,
+      33
+    ],
+    "backNumbers": [
+      5,
+      9
+    ]
+  },
+  {
+    "period": "25095",
+    "date": "2025-08-20",
+    "frontNumbers": [
+      7,
+      13,
+      14,
+      19,
+      27
+    ],
+    "backNumbers": [
+      6,
+      10
+    ]
+  },
+  {
+    "period": "25096",
+    "date": "2025-08-23",
+    "frontNumbers": [
+      2,
+      11,
+      17,
+      22,
+      24
+    ],
+    "backNumbers": [
+      7,
+      9
+    ]
+  },
+  {
+    "period": "25097",
+    "date": "2025-08-25",
+    "frontNumbers": [
+      5,
+      24,
+      25,
+      32,
+      34
+    ],
+    "backNumbers": [
+      1,
+      9
+    ]
+  },
+  {
+    "period": "25098",
+    "date": "2025-08-27",
+    "frontNumbers": [
+      1,
+      7,
+      9,
+      10,
+      23
+    ],
+    "backNumbers": [
+      10,
+      12
+    ]
+  },
+  {
+    "period": "25099",
+    "date": "2025-08-30",
+    "frontNumbers": [
+      6,
+      12,
+      20,
+      26,
+      31
+    ],
+    "backNumbers": [
+      2,
+      4
+    ]
+  },
+  {
+    "period": "25100",
+    "date": "2025-09-01",
+    "frontNumbers": [
+      26,
+      28,
+      32,
+      34,
+      35
+    ],
+    "backNumbers": [
+      2,
+      7
+    ]
+  },
+  {
+    "period": "25101",
+    "date": "2025-09-03",
+    "frontNumbers": [
+      5,
+      7,
+      19,
+      26,
+      32
+    ],
+    "backNumbers": [
+      8,
+      9
+    ]
+  },
+  {
+    "period": "25102",
+    "date": "2025-09-06",
+    "frontNumbers": [
+      9,
+      10,
+      13,
+      26,
+      28
+    ],
+    "backNumbers": [
+      2,
+      4
+    ]
+  },
+  {
+    "period": "25103",
+    "date": "2025-09-08",
+    "frontNumbers": [
+      5,
+      8,
+      19,
+      32,
+      34
+    ],
+    "backNumbers": [
+      4,
+      5
+    ]
+  },
+  {
+    "period": "25104",
+    "date": "2025-09-10",
+    "frontNumbers": [
+      2,
+      6,
+      9,
+      22,
+      34
+    ],
+    "backNumbers": [
+      2,
+      8
+    ]
+  },
+  {
+    "period": "25105",
+    "date": "2025-09-13",
+    "frontNumbers": [
+      15,
+      16,
+      25,
+      28,
+      34
+    ],
+    "backNumbers": [
+      10,
+      12
+    ]
+  },
+  {
+    "period": "25106",
+    "date": "2025-09-15",
+    "frontNumbers": [
+      5,
+      6,
+      11,
+      26,
+      29
+    ],
+    "backNumbers": [
+      5,
+      10
+    ]
+  },
+  {
+    "period": "25107",
+    "date": "2025-09-17",
+    "frontNumbers": [
+      5,
+      7,
+      8,
+      15,
+      33
+    ],
+    "backNumbers": [
+      6,
+      10
+    ]
+  },
+  {
+    "period": "25108",
+    "date": "2025-09-20",
+    "frontNumbers": [
+      14,
+      18,
+      21,
+      24,
+      29
+    ],
+    "backNumbers": [
+      3,
+      6
+    ]
+  },
+  {
+    "period": "25109",
+    "date": "2025-09-22",
+    "frontNumbers": [
+      4,
+      8,
+      10,
+      13,
+      26
+    ],
+    "backNumbers": [
+      9,
+      10
+    ]
+  },
+  {
+    "period": "25110",
+    "date": "2025-09-24",
+    "frontNumbers": [
+      1,
+      15,
+      22,
+      30,
+      31
+    ],
+    "backNumbers": [
+      2,
+      8
+    ]
+  },
+  {
+    "period": "25111",
+    "date": "2025-09-27",
+    "frontNumbers": [
+      2,
+      9,
+      14,
+      21,
+      26
+    ],
+    "backNumbers": [
+      2,
+      12
+    ]
+  },
+  {
+    "period": "25112",
+    "date": "2025-09-29",
+    "frontNumbers": [
+      3,
+      4,
+      21,
+      23,
+      24
+    ],
+    "backNumbers": [
+      9,
+      12
+    ]
+  },
+  {
+    "period": "25113",
+    "date": "2025-10-06",
+    "frontNumbers": [
+      1,
+      14,
+      18,
+      28,
+      35
+    ],
+    "backNumbers": [
+      2,
+      3
+    ]
+  },
+  {
+    "period": "25114",
+    "date": "2025-10-08",
+    "frontNumbers": [
+      3,
+      8,
+      9,
+      12,
+      16
+    ],
+    "backNumbers": [
+      1,
+      5
+    ]
+  },
+  {
+    "period": "25115",
+    "date": "2025-10-11",
+    "frontNumbers": [
+      3,
+      12,
+      14,
+      21,
+      35
+    ],
+    "backNumbers": [
+      1,
+      5
+    ]
+  },
+  {
+    "period": "25116",
+    "date": "2025-10-13",
+    "frontNumbers": [
+      2,
+      6,
+      16,
+      22,
+      29
+    ],
+    "backNumbers": [
+      8,
+      12
+    ]
+  },
+  {
+    "period": "25117",
+    "date": "2025-10-15",
+    "frontNumbers": [
+      5,
+      10,
+      18,
+      21,
+      29
+    ],
+    "backNumbers": [
+      5,
+      7
+    ]
+  },
+  {
+    "period": "25118",
+    "date": "2025-10-18",
+    "frontNumbers": [
+      2,
+      8,
+      9,
+      12,
+      21
+    ],
+    "backNumbers": [
+      4,
+      5
+    ]
+  },
+  {
+    "period": "25119",
+    "date": "2025-10-20",
+    "frontNumbers": [
+      8,
+      15,
+      27,
+      29,
+      31
+    ],
+    "backNumbers": [
+      1,
+      7
+    ]
+  },
+  {
+    "period": "25120",
+    "date": "2025-10-22",
+    "frontNumbers": [
+      11,
+      13,
+      22,
+      26,
+      35
+    ],
+    "backNumbers": [
+      2,
+      8
+    ]
+  },
+  {
+    "period": "25121",
+    "date": "2025-10-25",
+    "frontNumbers": [
+      2,
+      3,
+      8,
+      13,
+      21
+    ],
+    "backNumbers": [
+      7,
+      12
+    ]
+  },
+  {
+    "period": "25122",
+    "date": "2025-10-27",
+    "frontNumbers": [
+      2,
+      3,
+      6,
+      16,
+      17
+    ],
+    "backNumbers": [
+      4,
+      5
+    ]
+  },
+  {
+    "period": "25123",
+    "date": "2025-10-29",
+    "frontNumbers": [
+      8,
+      13,
+      24,
+      25,
+      31
+    ],
+    "backNumbers": [
+      4,
+      10
+    ]
+  },
+  {
+    "period": "25124",
+    "date": "2025-11-01",
+    "frontNumbers": [
+      6,
+      9,
+      14,
+      26,
+      27
+    ],
+    "backNumbers": [
+      8,
+      9
+    ]
+  },
+  {
+    "period": "25125",
+    "date": "2025-11-03",
+    "frontNumbers": [
+      10,
+      11,
+      13,
+      19,
+      35
+    ],
+    "backNumbers": [
+      4,
+      11
+    ]
+  },
+  {
+    "period": "25126",
+    "date": "2025-11-05",
+    "frontNumbers": [
+      1,
+      8,
+      18,
+      27,
+      30
+    ],
+    "backNumbers": [
+      6,
+      7
+    ]
+  },
+  {
+    "period": "25127",
+    "date": "2025-11-08",
+    "frontNumbers": [
+      4,
+      5,
+      19,
+      28,
+      29
+    ],
+    "backNumbers": [
+      5,
+      8
+    ]
+  },
+  {
+    "period": "25128",
+    "date": "2025-11-10",
+    "frontNumbers": [
+      3,
+      6,
+      26,
+      30,
+      33
+    ],
+    "backNumbers": [
+      11,
+      12
+    ]
+  },
+  {
+    "period": "25129",
+    "date": "2025-11-12",
+    "frontNumbers": [
+      3,
+      9,
+      14,
+      28,
+      35
+    ],
+    "backNumbers": [
+      2,
+      4
+    ]
+  },
+  {
+    "period": "25130",
+    "date": "2025-11-15",
+    "frontNumbers": [
+      1,
+      13,
+      16,
+      27,
+      29
+    ],
+    "backNumbers": [
+      2,
+      11
+    ]
+  },
+  {
+    "period": "25131",
+    "date": "2025-11-17",
+    "frontNumbers": [
+      3,
+      8,
+      25,
+      29,
+      32
+    ],
+    "backNumbers": [
+      9,
+      12
+    ]
+  },
+  {
+    "period": "25132",
+    "date": "2025-11-19",
+    "frontNumbers": [
+      1,
+      9,
+      10,
+      12,
+      19
+    ],
+    "backNumbers": [
+      6,
+      7
+    ]
+  },
+  {
+    "period": "25133",
+    "date": "2025-11-22",
+    "frontNumbers": [
+      4,
+      11,
+      23,
+      27,
+      35
+    ],
+    "backNumbers": [
+      7,
+      11
+    ]
+  },
+  {
+    "period": "25134",
+    "date": "2025-11-24",
+    "frontNumbers": [
+      7,
+      12,
+      18,
+      27,
+      33
+    ],
+    "backNumbers": [
+      9,
+      10
+    ]
+  },
+  {
+    "period": "25135",
+    "date": "2025-11-26",
+    "frontNumbers": [
+      2,
+      10,
+      16,
+      28,
+      32
+    ],
+    "backNumbers": [
+      1,
+      7
+    ]
+  },
+  {
+    "period": "25136",
+    "date": "2025-11-29",
+    "frontNumbers": [
+      7,
+      11,
+      15,
+      16,
+      23
+    ],
+    "backNumbers": [
+      9,
+      11
+    ]
+  },
+  {
+    "period": "25137",
+    "date": "2025-12-01",
+    "frontNumbers": [
+      7,
+      8,
+      9,
+      11,
+      22
+    ],
+    "backNumbers": [
+      5,
+      11
+    ]
+  },
+  {
+    "period": "25138",
+    "date": "2025-12-03",
+    "frontNumbers": [
+      1,
+      3,
+      19,
+      21,
+      23
+    ],
+    "backNumbers": [
+      7,
+      11
+    ]
+  },
+  {
+    "period": "25139",
+    "date": "2025-12-06",
+    "frontNumbers": [
+      8,
+      18,
+      22,
+      30,
+      35
+    ],
+    "backNumbers": [
+      1,
+      4
+    ]
+  },
+  {
+    "period": "25140",
+    "date": "2025-12-08",
+    "frontNumbers": [
+      4,
+      5,
+      13,
+      18,
+      34
+    ],
+    "backNumbers": [
+      2,
+      8
+    ]
+  },
+  {
+    "period": "25141",
+    "date": "2025-12-10",
+    "frontNumbers": [
+      4,
+      9,
+      24,
+      28,
+      29
+    ],
+    "backNumbers": [
+      2,
+      10
+    ]
+  },
+  {
+    "period": "25142",
+    "date": "2025-12-13",
+    "frontNumbers": [
+      9,
+      10,
+      14,
+      27,
+      29
+    ],
+    "backNumbers": [
+      2,
+      9
+    ]
+  },
+  {
+    "period": "25143",
+    "date": "2025-12-15",
+    "frontNumbers": [
+      3,
+      4,
+      18,
+      24,
+      29
+    ],
+    "backNumbers": [
+      7,
+      12
+    ]
+  },
+  {
+    "period": "25144",
+    "date": "2025-12-17",
+    "frontNumbers": [
+      2,
+      5,
+      13,
+      15,
+      28
+    ],
+    "backNumbers": [
+      5,
+      8
+    ]
+  },
+  {
+    "period": "25145",
+    "date": "2025-12-20",
+    "frontNumbers": [
+      5,
+      7,
+      20,
+      22,
+      25
+    ],
+    "backNumbers": [
+      4,
+      5
+    ]
+  },
+  {
+    "period": "25146",
+    "date": "2025-12-22",
+    "frontNumbers": [
+      6,
+      11,
+      13,
+      16,
+      22
+    ],
+    "backNumbers": [
+      2,
+      3
+    ]
+  },
+  {
+    "period": "25147",
+    "date": "2025-12-24",
+    "frontNumbers": [
+      6,
+      16,
+      21,
+      25,
+      33
+    ],
+    "backNumbers": [
+      7,
+      8
+    ]
+  },
+  {
+    "period": "25148",
+    "date": "2025-12-27",
+    "frontNumbers": [
+      3,
+      4,
+      14,
+      30,
+      32
+    ],
+    "backNumbers": [
+      8,
+      12
+    ]
+  },
+  {
+    "period": "25149",
+    "date": "2025-12-29",
+    "frontNumbers": [
+      24,
+      26,
+      30,
+      31,
+      32
+    ],
+    "backNumbers": [
+      5,
+      12
+    ]
+  },
+  {
+    "period": "25150",
+    "date": "2025-12-31",
+    "frontNumbers": [
+      13,
+      14,
+      15,
+      28,
+      31
+    ],
+    "backNumbers": [
+      1,
+      5
+    ]
+  },
+  {
+    "period": "26001",
+    "date": "2026-01-03",
+    "frontNumbers": [
+      7,
+      9,
+      23,
+      27,
+      32
+    ],
+    "backNumbers": [
+      2,
+      8
+    ]
+  },
+  {
+    "period": "26002",
+    "date": "2026-01-05",
+    "frontNumbers": [
+      4,
+      8,
+      15,
+      20,
+      31
+    ],
+    "backNumbers": [
+      7,
+      8
+    ]
+  },
+  {
+    "period": "26003",
+    "date": "2026-01-07",
+    "frontNumbers": [
+      2,
+      9,
+      11,
+      15,
+      16
+    ],
+    "backNumbers": [
+      2,
+      4
+    ]
+  },
+  {
+    "period": "26004",
+    "date": "2026-01-10",
+    "frontNumbers": [
+      5,
+      18,
+      23,
+      25,
+      32
+    ],
+    "backNumbers": [
+      5,
+      9
+    ]
+  },
+  {
+    "period": "26005",
+    "date": "2026-01-12",
+    "frontNumbers": [
+      2,
+      4,
+      16,
+      23,
+      35
+    ],
+    "backNumbers": [
+      6,
+      11
+    ]
+  },
+  {
+    "period": "26006",
+    "date": "2026-01-14",
+    "frontNumbers": [
+      5,
+      12,
+      18,
+      23,
+      35
+    ],
+    "backNumbers": [
+      6,
+      12
+    ]
+  },
+  {
+    "period": "26007",
+    "date": "2026-01-17",
+    "frontNumbers": [
+      1,
+      3,
+      13,
+      20,
+      26
+    ],
+    "backNumbers": [
+      3,
+      10
+    ]
+  },
+  {
+    "period": "26008",
+    "date": "2026-01-19",
+    "frontNumbers": [
+      3,
+      6,
+      17,
+      21,
+      33
+    ],
+    "backNumbers": [
+      5,
+      11
+    ]
+  },
+  {
+    "period": "26009",
+    "date": "2026-01-21",
+    "frontNumbers": [
+      5,
+      12,
+      13,
+      14,
+      33
+    ],
+    "backNumbers": [
+      5,
+      8
+    ]
+  },
+  {
+    "period": "26010",
+    "date": "2026-01-24",
+    "frontNumbers": [
+      2,
+      3,
+      13,
+      18,
+      26
+    ],
+    "backNumbers": [
+      2,
+      9
+    ]
+  },
+  {
+    "period": "26011",
+    "date": "2026-01-26",
+    "frontNumbers": [
+      14,
+      21,
+      23,
+      29,
+      33
+    ],
+    "backNumbers": [
+      2,
+      10
+    ]
+  },
+  {
+    "period": "26012",
+    "date": "2026-01-28",
+    "frontNumbers": [
+      1,
+      2,
+      9,
+      22,
+      25
+    ],
+    "backNumbers": [
+      1,
+      6
+    ]
+  },
+  {
+    "period": "26013",
+    "date": "2026-01-31",
+    "frontNumbers": [
+      3,
+      5,
+      6,
+      23,
+      26
+    ],
+    "backNumbers": [
+      1,
+      4
+    ]
+  },
+  {
+    "period": "26014",
+    "date": "2026-02-02",
+    "frontNumbers": [
+      16,
+      18,
+      23,
+      34,
+      35
+    ],
+    "backNumbers": [
+      1,
+      6
+    ]
+  },
+  {
+    "period": "26015",
+    "date": "2026-02-04",
+    "frontNumbers": [
+      1,
+      4,
+      10,
+      13,
+      17
+    ],
+    "backNumbers": [
+      3,
+      11
+    ]
+  },
+  {
+    "period": "26016",
+    "date": "2026-02-07",
+    "frontNumbers": [
+      8,
+      9,
+      12,
+      19,
+      24
+    ],
+    "backNumbers": [
+      1,
+      6
+    ]
+  },
+  {
+    "period": "26017",
+    "date": "2026-02-09",
+    "frontNumbers": [
+      4,
+      5,
+      10,
+      23,
+      31
+    ],
+    "backNumbers": [
+      7,
+      12
+    ]
+  },
+  {
+    "period": "26018",
+    "date": "2026-02-11",
+    "frontNumbers": [
+      9,
+      11,
+      19,
+      30,
+      35
+    ],
+    "backNumbers": [
+      1,
+      12
+    ]
+  },
+  {
+    "period": "26019",
+    "date": "2026-02-25",
+    "frontNumbers": [
+      12,
+      13,
+      14,
+      16,
+      31
+    ],
+    "backNumbers": [
+      4,
+      12
+    ]
+  },
+  {
+    "period": "26020",
+    "date": "2026-02-28",
+    "frontNumbers": [
+      1,
+      10,
+      21,
+      23,
+      29
+    ],
+    "backNumbers": [
+      10,
+      12
+    ]
+  },
+  {
+    "period": "26021",
+    "date": "2026-03-02",
+    "frontNumbers": [
+      5,
+      8,
+      12,
+      14,
+      17
+    ],
+    "backNumbers": [
+      4,
+      5
+    ]
+  },
+  {
+    "period": "26022",
+    "date": "2026-03-04",
+    "frontNumbers": [
+      5,
+      9,
+      10,
+      18,
+      26
+    ],
+    "backNumbers": [
+      5,
+      6
+    ]
+  },
+  {
+    "period": "26023",
+    "date": "2026-03-07",
+    "frontNumbers": [
+      9,
+      25,
+      26,
+      27,
+      28
+    ],
+    "backNumbers": [
+      1,
+      8
+    ]
+  },
+  {
+    "period": "26024",
+    "date": "2026-03-09",
+    "frontNumbers": [
+      2,
+      4,
+      8,
+      10,
+      21
+    ],
+    "backNumbers": [
+      9,
+      12
+    ]
+  },
+  {
+    "period": "26025",
+    "date": "2026-03-11",
+    "frontNumbers": [
+      3,
+      15,
+      24,
+      28,
+      29
+    ],
+    "backNumbers": [
+      3,
+      7
+    ]
+  },
+  {
+    "period": "26026",
+    "date": "2026-03-14",
+    "frontNumbers": [
+      10,
+      11,
+      22,
+      26,
+      32
+    ],
+    "backNumbers": [
+      1,
+      8
+    ]
+  },
+  {
+    "period": "26027",
+    "date": "2026-03-16",
+    "frontNumbers": [
+      9,
+      10,
+      11,
+      12,
+      16
+    ],
+    "backNumbers": [
+      1,
+      11
+    ]
+  },
+  {
+    "period": "26028",
+    "date": "2026-03-18",
+    "frontNumbers": [
+      15,
+      27,
+      29,
+      30,
+      34
+    ],
+    "backNumbers": [
+      1,
+      10
+    ]
+  },
+  {
+    "period": "26029",
+    "date": "2026-03-21",
+    "frontNumbers": [
+      3,
+      5,
+      17,
+      33,
+      35
+    ],
+    "backNumbers": [
+      5,
+      7
+    ]
+  },
+  {
+    "period": "26030",
+    "date": "2026-03-23",
+    "frontNumbers": [
+      2,
+      13,
+      22,
+      28,
+      34
+    ],
+    "backNumbers": [
+      5,
+      12
+    ]
+  },
+  {
+    "period": "26031",
+    "date": "2026-03-25",
+    "frontNumbers": [
+      6,
+      8,
+      22,
+      29,
+      34
+    ],
+    "backNumbers": [
+      5,
+      7
+    ]
+  },
+  {
+    "period": "26032",
+    "date": "2026-03-28",
+    "frontNumbers": [
+      3,
+      4,
+      19,
+      26,
+      32
+    ],
+    "backNumbers": [
+      1,
+      12
+    ]
+  },
+  {
+    "period": "26033",
+    "date": "2026-03-30",
+    "frontNumbers": [
+      3,
+      5,
+      7,
+      9,
+      18
+    ],
+    "backNumbers": [
+      2,
+      10
+    ]
+  },
+  {
+    "period": "26034",
+    "date": "2026-04-01",
+    "frontNumbers": [
+      11,
+      12,
+      25,
+      26,
+      27
+    ],
+    "backNumbers": [
+      8,
+      11
+    ]
+  },
+  {
+    "period": "26035",
+    "date": "2026-04-04",
+    "frontNumbers": [
+      2,
+      22,
+      30,
+      33,
+      34
+    ],
+    "backNumbers": [
+      8,
+      12
+    ]
+  },
+  {
+    "period": "26036",
+    "date": "2026-04-06",
+    "frontNumbers": [
+      4,
+      7,
+      16,
+      26,
+      32
+    ],
+    "backNumbers": [
+      5,
+      8
+    ]
+  },
+  {
+    "period": "26037",
+    "date": "2026-04-08",
+    "frontNumbers": [
+      7,
+      12,
+      13,
+      28,
+      32
+    ],
+    "backNumbers": [
+      6,
+      8
+    ]
+  },
+  {
+    "period": "26038",
+    "date": "2026-04-11",
+    "frontNumbers": [
+      8,
+      17,
+      21,
+      33,
+      35
+    ],
+    "backNumbers": [
+      6,
+      7
+    ]
+  }
+]

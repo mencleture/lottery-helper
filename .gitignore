@@ -1,23 +1,48 @@
-# Dependencies
+# Build output
+dist/
+dist-*/
+_out/
+_out*/
+
+# Node modules
 node_modules/
 
-# Build outputs (don't track large packaged files)
-dist/
-dist2/
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
 
-# User data (persisted locally)
-data/
+# Temp/debug files
+_*.py
+_*.txt
+_*.json
+_*.html
+check_*.py
+fix_*.py
+test_*.py
 
-# ML model files (generated locally)
-models/
+# Old version backups
+_old_check/
+_verify/
+_verify2/
 
-# Temp / cache
-python/__pycache__/
-temp_extract/
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Logs
 *.log
+npm-debug.log*
 
-# OS junk
-.DS_Store
-Thumbs.db
+# Environment
+.env
+.env.local
+
+# ASAR (binary)
+*.asar

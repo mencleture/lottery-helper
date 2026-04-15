@@ -3,141 +3,201 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>彩票助手 - 开奖记录查询与号码推荐</title>
+  <title>彩票助手 - 多策略预测分析平台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app-container">
-    <!-- 顶部标题栏 -->
-    <header class="app-header">
-      <div class="logo">
-        <span class="logo-icon">🎰</span>
-        <h1>彩票助手</h1>
+  <div class="app-shell">
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="loading-spinner">
+        <div class="spinner"></div>
+        <p>正在获取数据...</p>
       </div>
-      <div class="header-actions">
-        <button class="btn-minimize" onclick="window.minimize()">─</button>
-        <button class="btn-close" onclick="window.close()">✕</button>
-      </div>
-    </header>
+    </div>
 
-    <!-- 主内容区 -->
+    <nav class="navbar">
+      <div class="navbar-container">
+        <div class="navbar-content">
+          <div class="navbar-brand">
+            <div class="navbar-logo">🎟️</div>
+            <div class="navbar-title-wrapper">
+              <span class="navbar-title">彩票助手<span class="highlight">策略版</span></span>
+              <span class="navbar-subtitle">Lottery Strategy Studio</span>
+            </div>
+          </div>
+
+          <div class="navbar-tools">
+            <div class="nav-meta-card">
+              <span class="nav-meta-label">数据来源</span>
+              <strong id="dataSource">本地数据</strong>
+            </div>
+            <div class="nav-meta-card desktop-only">
+              <span class="nav-meta-label">更新时间</span>
+              <strong id="updateTime">--</strong>
+            </div>
+            <div class="nav-meta-card desktop-only">
+              <span class="nav-meta-label">历史记录</span>
+              <strong id="recordCount">0 条</strong>
+            </div>
+            <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="切换明暗主题">
+              <span class="theme-icon" id="themeIcon">🌙</span>
+              <span id="themeText">夜间模式</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="navbar-subnav">
+          <div class="lottery-switch soft-panel">
+            <button class="lottery-switch-btn active" data-type="ssq" onclick="selectLottery('ssq')">双色球</button>
+            <button class="lottery-switch-btn" data-type="dlt" onclick="selectLottery('dlt')">大乐透</button>
+          </div>
+          <div class="view-switch-list soft-panel">
+            <button class="view-switch-btn active" data-view="forecast" onclick="switchView('forecast')">最新预测</button>
+            <button class="view-switch-btn" data-view="charts" onclick="switchView('charts')">图表分析</button>
+            <button class="view-switch-btn" data-view="history" onclick="switchView('history')">历史回溯</button>
+          </div>
+        </div>
+      </div>
+    </nav>
+
     <main class="main-content">
-      <!-- 左侧边栏 - 彩票选择 -->
-      <aside class="sidebar">
-        <div class="lottery-types">
-          <button class="lottery-type-btn active" data-type="ssq" onclick="selectLottery('ssq')">
-            <span class="type-icon">🔴</span>
-            <div class="type-info">
-              <span class="type-name">双色球</span>
-              <span class="type-desc">每周二四五日开奖</span>
-            </div>
-          </button>
-          <button class="lottery-type-btn" data-type="dlt" onclick="selectLottery('dlt')">
-            <span class="type-icon">🔵</span>
-            <div class="type-info">
-              <span class="type-name">大乐透</span>
-              <span class="type-desc">每周一三六开奖</span>
-            </div>
-          </button>
-        </div>
-
-        <div class="sidebar-section">
-          <h3>操作面板</h3>
-          <button class="btn-primary btn-large" onclick="refreshData()" id="refreshBtn">
-            <span class="btn-icon">🔄</span>
-            <span>获取最新记录</span>
-          </button>
-        </div>
-
-        <div class="sidebar-section">
-          <h3>数据状态</h3>
-          <div class="status-info">
-            <div class="status-item">
-              <span class="status-label">数据来源</span>
-              <span class="status-value" id="dataSource">本地数据</span>
-            </div>
-            <div class="status-item">
-              <span class="status-label">更新时间</span>
-              <span class="status-value" id="updateTime">--</span>
-            </div>
-            <div class="status-item">
-              <span class="status-label">历史记录</span>
-              <span class="status-value" id="recordCount">0 条</span>
+      <section class="content-panel active" id="view-forecast">
+        <section class="hero-banner">
+          <div class="hero-banner-blur hero-banner-blur-1"></div>
+          <div class="hero-banner-blur hero-banner-blur-2"></div>
+          <div class="hero-banner-content">
+            <div class="hero-banner-grid">
+              <div>
+                <div class="hero-banner-badge">
+                  <span class="hero-badge-tag">Strategy Forecast</span>
+                  <span class="hero-badge-countdown" id="currentLotteryMeta">红6蓝1 · 周二四日</span>
+                </div>
+                <h2 class="hero-title"><span id="heroTitle">双色球预测中心</span></h2>
+                <p class="hero-desc" id="heroDesc">聚焦双色球的最新预测、图表分析与历史回溯，所有模块分开展示，页面更简洁。</p>
+                <div class="hero-meta-row">
+                  <div class="hero-meta-item">
+                    <span class="hero-meta-label">当前彩种</span>
+                    <strong id="currentLotteryName">双色球</strong>
+                  </div>
+                  <div class="hero-meta-item">
+                    <span class="hero-meta-label">最近更新时间</span>
+                    <strong id="heroUpdateTime">--</strong>
+                  </div>
+                  <div class="hero-meta-item">
+                    <span class="hero-meta-label">样本规模</span>
+                    <strong id="heroRecordCount">0 条</strong>
+                  </div>
+                </div>
+              </div>
+              <div class="hero-side-card">
+                <div class="hero-side-date" id="heroDateDisplay">--</div>
+                <div class="hero-side-label">策略引擎已准备就绪</div>
+                <button class="primary-btn" onclick="refreshData()" id="refreshBtn">🔄 刷新数据并生成推荐</button>
+              </div>
             </div>
           </div>
-        </div>
-      </aside>
+        </section>
 
-      <!-- 中间区域 - 号码推荐 -->
-      <section class="recommendation-section">
-        <div class="section-header">
-          <h2>🎯 智能推荐号码</h2>
+        <section class="info-card">
+          <div class="info-card-icon">◎</div>
+          <div class="info-card-content">
+            <h3 class="info-card-title">本期策略说明</h3>
+            <p>界面结构参考目标项目的产品展示页逻辑：顶部导航、Hero 信息卡、主推荐卡组、趋势分析与历史回溯分区展示。这里只保留“策略体系”语义，不再使用“AI 模型阵列”那种表达。</p>
+          </div>
+        </section>
+
+        <section class="content-block forecast-block">
+          <div class="section-header compact">
+            <div>
+              <p class="section-kicker">Prediction Dashboard</p>
+              <h3>本期固定策略榜单</h3>
+            </div>
+            <div class="section-side-note">固定 6-7 个策略，按历史表现降序展示</div>
+          </div>
+          <div id="recommendationContainer" class="recommendation-stage">
+            <div class="empty-state">
+              <div class="empty-icon">💡</div>
+              <p>点击“刷新数据并生成推荐”查看最新预测</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="disclaimer-card">
+          <span>策略结果仅供参考，请理性决策、量力而行。</span>
+        </section>
+      </section>
+
+      <section class="content-panel" id="view-charts">
+        <section class="section-hero">
+          <div>
+            <p class="section-kicker">Analysis Center</p>
+            <h2>图表分析</h2>
+            <p>保持参考项目那种“摘要卡 + 规则卡 + 分析网格”的浏览节奏，只把内容换成当前策略系统的数据展示。</p>
+          </div>
+          <div class="analysis-hero-right" id="analysisSummaryBox">
+            <div class="analysis-summary-note">刷新数据后自动更新分析摘要</div>
+          </div>
+        </section>
+
+        <div class="stats-overview-grid" id="statsOverviewGrid">
+          <div class="stat-overview-card"><div class="stat-overview-label">数据样本</div><div class="stat-overview-value">--</div></div>
+          <div class="stat-overview-card"><div class="stat-overview-label">主区热号</div><div class="stat-overview-value">--</div></div>
+          <div class="stat-overview-card"><div class="stat-overview-label">蓝球/后区热号</div><div class="stat-overview-value">--</div></div>
+          <div class="stat-overview-card"><div class="stat-overview-label">平均和值</div><div class="stat-overview-value">--</div></div>
         </div>
-        
-        <div class="recommendation-container" id="recommendationContainer">
-          <!-- 推荐号码卡片将在这里生成 -->
+
+        <div class="prize-rules-card" id="prizeRulesCard"></div>
+
+        <div class="content-block stats-panel-shell" id="statsContainer">
           <div class="empty-state">
-            <span class="empty-icon">💡</span>
-            <p>点击"获取最新记录"按钮<br>获取分析数据后显示推荐号码</p>
-          </div>
-        </div>
-        
-        <!-- 往期推荐折叠面板 -->
-        <div class="history-rec-panel" id="historyRecPanel">
-          <div class="history-rec-header" onclick="toggleHistoryRec()">
-            <span>📜 往期推荐</span>
-            <span class="toggle-icon" id="historyRecToggle">▼</span>
-          </div>
-          <div class="history-rec-content" id="historyRecContent">
-            <div class="history-rec-empty">暂无往期推荐记录</div>
+            <div class="empty-icon">📈</div>
+            <p>刷新数据后显示图表分析</p>
           </div>
         </div>
       </section>
 
-      <!-- 右侧区域 - 历史记录 -->
-      <section class="history-section">
-        <div class="section-header">
-          <h2>📊 往期开奖记录</h2>
-          <div class="history-filter">
-            <select id="historyFilter" onchange="filterHistory()">
-              <option value="10">显示10条</option>
-              <option value="20" selected>显示20条</option>
-              <option value="50">显示50条</option>
-            </select>
+      <section class="content-panel" id="view-history">
+        <section class="section-hero">
+          <div>
+            <p class="section-kicker">History Review</p>
+            <h2>历史回溯</h2>
+            <p>延续参考项目“先趋势、再命中回放、再明细列表”的阅读顺序，历史趋势与策略回放固定按最近 60 期展示，并在每次开奖后自动合并最新真实数据。</p>
+          </div>
+        </section>
+
+        <div class="content-block history-trend-panel" id="historyTrendContainer">
+          <div class="empty-state">
+            <div class="empty-icon">🎯</div>
+            <p>新版策略回溯生成后，这里会显示命中趋势</p>
           </div>
         </div>
-        
-        <div class="history-list" id="historyList">
-          <!-- 历史记录将在这里生成 -->
+
+        <div class="history-insight-grid">
+          <div class="content-block history-performance-panel" id="historyPerformanceContainer">
+            <div class="empty-state">
+              <div class="empty-icon">📈</div>
+              <p>这里将展示策略命中表现摘要</p>
+            </div>
+          </div>
+          <div class="content-block history-review-panel" id="historyReviewContainer">
+            <div class="empty-state">
+              <div class="empty-icon">🧾</div>
+              <p>暂无新版策略回放</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="content-block history-body" id="historyList">
           <div class="empty-state">
-            <span class="empty-icon">📋</span>
-            <p>暂无历史记录<br>请先获取最新数据</p>
+            <div class="empty-icon">📋</div>
+            <p>暂无历史记录，请先获取最新数据</p>
           </div>
         </div>
       </section>
     </main>
-
-    <!-- 底部状态栏 -->
-    <footer class="app-footer">
-      <div class="footer-left">
-        <span class="indicator online"></span>
-        <span>就绪</span>
-      </div>
-      <div class="footer-center">
-        <span>理性购彩 · 量力而行</span>
-      </div>
-      <div class="footer-right">
-        <span>v1.0.0</span>
-      </div>
-    </footer>
-  </div>
-
-  <!-- 加载遮罩 -->
-  <div class="loading-overlay" id="loadingOverlay">
-    <div class="loading-spinner">
-      <div class="spinner"></div>
-      <p>正在获取数据...</p>
-    </div>
   </div>
 
   <script src="renderer.js"></script>

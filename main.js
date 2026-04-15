@@ -4,12 +4,46 @@ const fs = require('fs');
 
 let mainWindow;
 
+// ========== ML 目录设置：从 asar 复制到 userData ==========
+function ensureMlSetup() {
+  const mlDest = path.join(app.getPath('userData'), 'ml');
+  if (fs.existsSync(mlDest)) {
+    return mlDest; // 已存在，跳过
+  }
+
+  const mlSrc = path.join(__dirname, 'ml');
+  if (!fs.existsSync(mlSrc)) {
+    console.warn('[ML] 打包中未找到 ml 目录，ML 功能将不可用');
+    return null;
+  }
+
+  fs.mkdirSync(mlDest, { recursive: true });
+
+  // 递归复制
+  function copyDir(src, dest) {
+    fs.mkdirSync(dest, { recursive: true });
+    for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        copyDir(srcPath, destPath);
+      } else {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
+  }
+
+  copyDir(mlSrc, mlDest);
+  console.log(`[ML] 已初始化 ml 目录: ${mlDest}`);
+  return mlDest;
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 800,
-    minWidth: 1000,
-    minHeight: 700,
+    width: 1280,
+    height: 900,
+    minWidth: 920,
+    minHeight: 680,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -22,7 +56,10 @@ function createWindow() {
   mainWindow.loadFile('index.html');
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  ensureMlSetup(); // 初始化 ML 目录
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -49,13 +86,85 @@ ipcMain.handle('export-history-data', async (event, lotteryType, historyData) =>
 });
 
 // ========== IPC: 获取推荐号码 ==========
+ipcMain.handle('get-stats-analysis', async (event, lotteryType) => {
+  try {
+    const mlDir = path.join(app.getPath('userData'), 'ml');
+    const scriptPath = path.join(mlDir, 'stats.py');
+    if (!fs.existsSync(scriptPath)) {
+      return { success: false, error: 'stats.py not found' };
+    }
+    const { execSync } = require('child_process');
+    const cmd = `python "${scriptPath}" ${lotteryType} 50 2>&1`;
+    const output = execSync(cmd, { encoding: 'utf-8', timeout: 15000 });
+    const match = output.match(/__RESULT_JSON__([\s\S]*?)__END_RESULT__/);
+    if (match) {
+      const results = JSON.parse(match[1]);
+      return { success: true, data: results[lotteryType] };
+    }
+    // 没有JSON时返回文本摘要
+    const lines = output.split('\n').filter(l => l.trim() && !l.includes('__RESULT'));
+    return { success: true, text: lines.join('\n') };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('get-recommendation', async (event, lotteryType, historyData) => {
   console.log(`[Main] 收到推荐请求: ${lotteryType}, 历史数据 ${historyData?.length || 0} 条`);
   
   try {
-    const recommendations = generateSmartRecommendation(lotteryType, historyData);
-    console.log(`[Main] 生成 ${recommendations.length} 组推荐`);
-    return { success: true, data: recommendations };
+    // 1. 调用 ML 预测（ml/ 已由 ensureMlSetup() 复制到 userData）
+    let mlPrediction = null;
+    try {
+      const { execSync } = require('child_process');
+      const mlDir = path.join(app.getPath('userData'), 'ml');
+      const scriptPath = path.join(mlDir, 'predict.py');
+      const cmd = `python "${scriptPath}" --${lotteryType}-only 2>&1`;
+      console.log(`[Main] ML预测命令: ${cmd}`);
+      const output = execSync(cmd, { encoding: 'utf-8', timeout: 15000 });
+      console.log(`[Main] ML输出长度: ${output.length} 字符`);
+      
+      // 提取 JSON 结果
+      const match = output.match(/__RESULT_JSON__([\s\S]*?)__END_RESULT__/);
+      if (match) {
+        const results = JSON.parse(match[1]);
+        mlPrediction = results[lotteryType];
+        console.log(`[Main] ML预测成功: type=${mlPrediction?.type}, redBalls=${JSON.stringify(mlPrediction?.redBalls)}`);
+      } else {
+        console.warn('[Main] ML输出中未找到 JSON 结果');
+      }
+    } catch (mlErr) {
+      console.warn('[Main] ML预测失败，使用规则策略:', mlErr.message);
+    }
+
+    // 玄学推荐（第2组）
+    let mysticalPrediction = null;
+    try {
+      const { execSync } = require('child_process');
+      const mlDir = path.join(app.getPath('userData'), 'ml');
+      const scriptPath = path.join(mlDir, 'mystical_recommend.py');
+      const cmd = `python "${scriptPath}" ${lotteryType} 2>&1`;
+      const output = execSync(cmd, { encoding: 'utf-8', timeout: 15000 });
+      const match = output.match(/__RESULT_JSON__([\s\S]*?)__END_RESULT__/);
+      if (match) {
+        mysticalPrediction = JSON.parse(match[1]);
+        console.log('[Main] 玄学推荐成功:', JSON.stringify(mysticalPrediction?.redBalls || mysticalPrediction?.frontBalls));
+      }
+    } catch (mystErr) {
+      console.warn('[Main] 玄学推荐失败:', mystErr.message);
+    }
+
+    // 固定策略榜单：每期固定 7 个策略，并按历史表现排序
+    const strategyBoard = generateRankedStrategyBoard(lotteryType, historyData, mlPrediction, mysticalPrediction);
+    console.log(`[Main] 固定策略 ${strategyBoard.atomicStrategies.length} 个，排序后输出 ${strategyBoard.rankedStrategies.length} 个`);
+    return {
+      success: true,
+      data: strategyBoard.rankedStrategies,
+      meta: {
+        atomicStrategies: strategyBoard.atomicStrategies,
+        architectureVersion: 'v3-ranked-strategies'
+      }
+    };
   } catch (error) {
     console.error('[Main] 生成推荐失败:', error);
     return { success: false, error: error.message };
@@ -63,7 +172,375 @@ ipcMain.handle('get-recommendation', async (event, lotteryType, historyData) => 
 });
 
 // ========== 智能推荐算法 ==========
-function generateSmartRecommendation(lotteryType, historyData) {
+function createRecommendationEnvelope(meta, payload, extraReason = []) {
+  const originReasons = Array.isArray(payload?.reason) ? payload.reason : [];
+  return {
+    ...payload,
+    masterKey: meta.key,
+    masterName: meta.name,
+    badge: meta.badge,
+    summary: meta.summary,
+    role: meta.role,
+    reason: [...extraReason, ...originReasons]
+  };
+}
+
+function cloneRecommendation(rec) {
+  return JSON.parse(JSON.stringify(rec));
+}
+
+function scoreRecommendationQuality(lotteryType, rec, historyData) {
+  if (!rec) return -999;
+  const latest = historyData?.[0] || null;
+  const main = lotteryType === 'ssq' ? [...(rec.redBalls || [])] : [...(rec.frontBalls || [])];
+  if (!main.length) return -999;
+  const sorted = [...main].sort((a, b) => a - b);
+  const odd = main.filter(n => n % 2 === 1).length;
+  const sum = main.reduce((a, b) => a + b, 0);
+  const ac = calcAC(main);
+  const consecutive = countConsecutivePairs(main);
+  const repeatWithLast = latest
+    ? (lotteryType === 'ssq'
+      ? main.filter(n => (latest.redNumbers || []).includes(n)).length
+      : main.filter(n => (latest.frontNumbers || []).includes(n)).length)
+    : 0;
+
+  let score = 50;
+  if (lotteryType === 'ssq') {
+    if (sum >= 75 && sum <= 130) score += 12;
+    if (ac >= 8 && ac <= 10) score += 10;
+    if (odd >= 2 && odd <= 4) score += 8;
+  } else {
+    if (sum >= 60 && sum <= 110) score += 12;
+    if (ac >= 7 && ac <= 10) score += 10;
+    if (odd >= 2 && odd <= 3) score += 8;
+  }
+  if (consecutive <= 2) score += 6;
+  score += Math.max(0, 8 - repeatWithLast * 2);
+  score += Math.max(0, new Set(main.map(n => n % 10)).size - 3);
+  return score;
+}
+
+function buildMasterRecommendations(lotteryType, rawRecommendations, historyData, mlPrediction, mysticalPrediction) {
+  const recs = Array.isArray(rawRecommendations) ? rawRecommendations.filter(Boolean) : [];
+  const mlRec = recs.find(r => r.reason?.some?.(x => String(x).includes('ML模型')))
+    || (mlPrediction ? recs[0] : null);
+  const mysticRec = recs.find(r => r.reason?.some?.(x => String(x).includes('玄学') || String(x).includes('上期') || String(x).includes('遗漏')))
+    || (mysticalPrediction ? recs.find(r => r !== mlRec) : null);
+  const others = recs.filter(r => r !== mlRec && r !== mysticRec)
+    .map(r => ({ rec: r, score: scoreRecommendationQuality(lotteryType, r, historyData) }))
+    .sort((a, b) => b.score - a.score);
+
+  const bestRec = others[0]?.rec || mlRec || mysticRec || recs[0] || null;
+  const hotRec = others.find(x => x.rec.reason?.some?.(r => String(r).includes('热号')))?.rec || others[1]?.rec || mlRec || bestRec;
+  const steadyRec = others.find(x => x.rec.reason?.some?.(r => String(r).includes('平衡') || String(r).includes('稳健') || String(r).includes('奇偶')))?.rec || bestRec || others[0]?.rec;
+  const coldRec = others.find(x => x.rec.reason?.some?.(r => String(r).includes('冷号') || String(r).includes('回补') || String(r).includes('遗漏')))?.rec || others[others.length - 1]?.rec || bestRec;
+  const mysticFinal = mysticRec || others.find(x => x.rec.reason?.some?.(r => String(r).includes('和值') || String(r).includes('跨度') || String(r).includes('区间')))?.rec || bestRec;
+
+  const blueLabel = lotteryType === 'ssq' ? '蓝球' : '后区';
+  const masterMeta = [
+    { key: 'best', name: '综合最优', badge: '🏆 综合最优', role: 'balanced', summary: '融合结构质量与历史分布后的首选推荐', rec: bestRec, extra: ['综合评分最高，优先作为主推荐展示'] },
+    { key: 'hot', name: '偏热策略', badge: '🔥 偏热策略', role: 'trend', summary: '偏向近期热号与热点结构', rec: hotRec, extra: ['强化近期热号趋势与热点组合'] },
+    { key: 'steady', name: '偏稳策略', badge: '🛡️ 偏稳策略', role: 'stable', summary: '更注重奇偶、和值、分区的平衡', rec: steadyRec, extra: ['更强调结构均衡与可读性'] },
+    { key: 'cold', name: '偏冷策略', badge: '❄️ 偏冷策略', role: 'rebound', summary: '关注遗漏与冷号回补机会', rec: coldRec, extra: ['偏向遗漏修复与冷号回补逻辑'] },
+    { key: 'mystic', name: '偏玄学', badge: '🔮 偏玄学', role: 'style', summary: '保留风格化选号思路与差异化表达', rec: mysticFinal, extra: [`保留风格化思路，${blueLabel}搭配更偏个性化`] }
+  ];
+
+  return masterMeta.map(item => createRecommendationEnvelope(item, cloneRecommendation(item.rec || bestRec || recs[0] || {}), item.extra));
+}
+
+function buildBallSetFromScores(scoreEntries, count, maxNum) {
+  const picked = [];
+  for (const [num] of scoreEntries) {
+    const val = Number(num);
+    if (!picked.includes(val)) picked.push(val);
+    if (picked.length >= count) break;
+  }
+  for (let n = 1; picked.length < count && n <= maxNum; n++) {
+    if (!picked.includes(n)) picked.push(n);
+  }
+  return picked.sort((a, b) => a - b);
+}
+
+function scorePoolToReason(scoreEntries, topN = 5, suffix = 'Top') {
+  return `${suffix}: ${scoreEntries.slice(0, topN).map(([n]) => String(n).padStart(2, '0')).join(', ')}`;
+}
+
+function computeAtomicScoreMaps(lotteryType, historyData, mlPrediction, mysticalPrediction) {
+  const recent10 = historyData.slice(0, 10);
+  const recent30 = historyData.slice(0, 30);
+  const recent50 = historyData.slice(0, 50);
+
+  if (lotteryType === 'ssq') {
+    const maxMain = 33;
+    const maxBack = 16;
+    const hotFreq = new Array(maxMain + 1).fill(0);
+    const blueFreq = new Array(maxBack + 1).fill(0);
+    recent10.forEach(record => {
+      (record.redNumbers || []).forEach(n => hotFreq[n]++);
+      if (record.blueNumber) blueFreq[record.blueNumber]++;
+    });
+    const redMissing = computeMissingPeriods(1, maxMain, recent50, 'redNumbers');
+    const longFreq = new Array(maxMain + 1).fill(0);
+    recent30.forEach(record => (record.redNumbers || []).forEach(n => longFreq[n]++));
+    const digitStats = computeDigitStats(recent30, 'redNumbers');
+
+    const maps = {
+      ml: {},
+      mystical: {},
+      hot: {},
+      cold: {},
+      balanced: {},
+      trend: {},
+      zoneSum: {},
+      pattern: {},
+      blue: {}
+    };
+
+    for (let n = 1; n <= maxMain; n++) {
+      const mlScore = mlPrediction?.probabilities?.[String(n)] ? Number(mlPrediction.probabilities[String(n)]) * 100 : 0;
+      const mystScore = mysticalPrediction?.redBalls?.includes?.(n) ? 95 - (mysticalPrediction.redBalls.indexOf(n) * 5) : 0;
+      const zoneIndex = n <= 11 ? 0 : (n <= 22 ? 1 : 2);
+      const edgeBias = (n <= 6 || n >= 28) ? 8 : 0;
+      const centerBias = (n >= 12 && n <= 22) ? 10 : 0;
+      const tailRarity = Math.max(0, 8 - ((digitStats[n % 10] || 0) / 2));
+      const hotScore = hotFreq[n] * 20 + longFreq[n] * 4 + (n <= 11 ? 3 : 0);
+      const coldScore = redMissing[n] * 9 + (hotFreq[n] === 0 ? 14 : 0) + edgeBias;
+      const balancedScore = (hotFreq[n] >= 1 ? 18 : 9) + centerBias + ((n % 2 === 1) ? 6 : 5) + (zoneIndex === 1 ? 4 : 2) + tailRarity;
+      const trendScore = Math.max(0, hotFreq[n] * 16 - longFreq[n] * 2) + (redMissing[n] <= 2 ? 10 : 0) + (zoneIndex !== 1 ? 3 : 0);
+      const zoneScore = (zoneIndex === 1 ? 22 : 15) + tailRarity + (redMissing[n] >= 4 && redMissing[n] <= 10 ? 6 : 0);
+      const patternScore = (redMissing[n] >= 3 && redMissing[n] <= 8 ? 24 : 0)
+        + (redMissing[n] >= 15 ? 22 : 0)
+        + (hotFreq[n] === 0 ? 10 : 0)
+        + (longFreq[n] <= 1 ? 12 : 0)
+        + tailRarity
+        + (zoneIndex !== 1 ? 4 : 0);
+      maps.ml[n] = mlScore;
+      maps.mystical[n] = mystScore;
+      maps.hot[n] = hotScore;
+      maps.cold[n] = coldScore;
+      maps.balanced[n] = balancedScore;
+      maps.trend[n] = trendScore;
+      maps.zoneSum[n] = zoneScore;
+      maps.pattern[n] = patternScore;
+    }
+
+    for (let n = 1; n <= maxBack; n++) {
+      const coolBlue = blueFreq[n] === 0 ? 12 : 0;
+      const warmBlue = blueFreq[n] >= 2 ? 6 : 0;
+      maps.blue[n] = (blueFreq[n] || 0) * 16 + ((mlPrediction?.blueBall === n) ? 26 : 0) + ((mysticalPrediction?.blueBalls || []).includes(n) ? 18 : 0) + coolBlue + warmBlue;
+    }
+
+    return maps;
+  }
+
+  const maxMain = 35;
+  const maxBack = 12;
+  const hotFreq = new Array(maxMain + 1).fill(0);
+  const backFreq = new Array(maxBack + 1).fill(0);
+  recent10.forEach(record => {
+    (record.frontNumbers || []).forEach(n => hotFreq[n]++);
+    (record.backNumbers || []).forEach(n => backFreq[n]++);
+  });
+  const frontMissing = computeMissingPeriods(1, maxMain, recent50, 'frontNumbers');
+  const backMissing = computeMissingPeriods(1, maxBack, recent50, 'backNumbers');
+  const longFreq = new Array(maxMain + 1).fill(0);
+  recent30.forEach(record => (record.frontNumbers || []).forEach(n => longFreq[n]++));
+  const digitStats = computeDigitStats(recent30, 'frontNumbers');
+
+  const maps = {
+    ml: {},
+    mystical: {},
+    hot: {},
+    cold: {},
+    balanced: {},
+    trend: {},
+    zoneSum: {},
+    pattern: {},
+    blue: {}
+  };
+
+  for (let n = 1; n <= maxMain; n++) {
+    const mlScore = mlPrediction?.probabilities?.[String(n)] ? Number(mlPrediction.probabilities[String(n)]) * 100 : 0;
+    const mystScore = mysticalPrediction?.redBalls?.includes?.(n) ? 95 - (mysticalPrediction.redBalls.indexOf(n) * 5) : 0;
+    const zoneIndex = n <= 12 ? 0 : (n <= 24 ? 1 : 2);
+    const spanBias = (n >= 8 && n <= 29) ? 8 : 3;
+    const frontTailRarity = Math.max(0, 7 - ((digitStats[n % 10] || 0) / 2));
+    const hotScore = hotFreq[n] * 18 + longFreq[n] * 5 + (zoneIndex === 1 ? 4 : 0);
+    const coldScore = frontMissing[n] * 8 + (hotFreq[n] === 0 ? 10 : 0) + (zoneIndex !== 1 ? 4 : 1);
+    const balancedScore = (hotFreq[n] >= 1 ? 15 : 7) + Math.max(0, 11 - Math.abs(18 - n)) + ((n % 2 === 1) ? 4 : 5) + spanBias;
+    const trendScore = Math.max(0, hotFreq[n] * 17 - longFreq[n] * 1.5) + (frontMissing[n] <= 2 ? 10 : 0) + (n >= 10 && n <= 30 ? 4 : 0);
+    const zoneScore = (zoneIndex === 1 ? 18 : 14) + frontTailRarity + (n >= 10 && n <= 30 ? 6 : 0) + (frontMissing[n] >= 5 && frontMissing[n] <= 11 ? 4 : 0);
+    const patternScore = (frontMissing[n] >= 4 && frontMissing[n] <= 9 ? 20 : 0)
+      + (frontMissing[n] >= 14 ? 18 : 0)
+      + (hotFreq[n] === 0 ? 8 : 0)
+      + (longFreq[n] <= 1 ? 8 : 0)
+      + frontTailRarity
+      + (zoneIndex === 1 ? 5 : 2);
+    maps.ml[n] = mlScore;
+    maps.mystical[n] = mystScore;
+    maps.hot[n] = hotScore;
+    maps.cold[n] = coldScore;
+    maps.balanced[n] = balancedScore;
+    maps.trend[n] = trendScore;
+    maps.zoneSum[n] = zoneScore;
+    maps.pattern[n] = patternScore;
+  }
+
+  for (let n = 1; n <= maxBack; n++) {
+    const hotBackBias = backFreq[n] >= 2 ? 10 : 0;
+    const coldBackBias = backMissing[n] >= 6 ? 14 : backMissing[n] >= 3 ? 7 : 0;
+    maps.blue[n] = (backFreq[n] || 0) * 14 + ((mlPrediction?.backBalls || []).includes(n) ? 24 : 0) + ((mysticalPrediction?.blueBalls || []).includes(n) ? 18 : 0) + (backMissing[n] || 0) * 5 + hotBackBias + coldBackBias;
+  }
+
+  return maps;
+}
+
+function buildAtomicStrategies(lotteryType, historyData, mlPrediction, mysticalPrediction) {
+  const scoreMaps = computeAtomicScoreMaps(lotteryType, historyData, mlPrediction, mysticalPrediction);
+  const mainCount = lotteryType === 'ssq' ? 6 : 5;
+  const backCount = lotteryType === 'ssq' ? 1 : 2;
+  const maxMain = lotteryType === 'ssq' ? 33 : 35;
+  const maxBack = lotteryType === 'ssq' ? 16 : 12;
+  const blueEntries = Object.entries(scoreMaps.blue).sort((a, b) => b[1] - a[1]);
+
+  // ===== 双色球专属策略池 =====
+  const ssqDefs = [
+    { key: 'ml', name: 'ML模型推荐', source: 'ml', reason: ['基于RF+GB集成模型概率输出，三区+尾数+AC值特征工程'] },
+    { key: 'mystical', name: '玄学规律推荐', source: 'mystical', reason: ['龙虎斗、五行生克、尾数玄机，风格化双色球选号'] },
+    { key: 'hot', name: '红球热力追踪', source: 'rule', reason: ['近10期高频红球优先，三区热度加权，中短遗漏窗口确认'] },
+    { key: 'cold', name: '冷号回补猎手', source: 'rule', reason: ['遗漏≥8期的冷号优先，边区冷号补偿，蓝球冷热切换'] },
+    { key: 'balanced', name: '三区均衡锁定', source: 'rule', reason: ['奇偶3:3，三区2:2:2，和值75~130，尾数≥4种，AC≥8'] },
+    { key: 'trend', name: '短周期动量', source: 'rule', reason: ['10期热度穿透30期均值，非中区节奏分加成'] },
+    { key: 'zoneSum', name: '区间和值锚定', source: 'rule', reason: ['中区(12-22)核心区优先，尾数稀缺加成，和值±20约束'] },
+    { key: 'pattern', name: '形态反转捕捉', source: 'rule', reason: ['3~8期回摆+15期超长遗漏+冷温断层+尾数稀缺+非中区偏置'] }
+  ];
+
+  // ===== 大乐透专属策略池 =====
+  const dltDefs = [
+    { key: 'ml', name: 'ML模型推荐', source: 'ml', reason: ['基于RF+GB集成模型概率输出，前区跨度+和值+连号特征工程'] },
+    { key: 'mystical', name: '玄学规律推荐', source: 'mystical', reason: ['龙虎斗、五行生克适配大乐透前区5+后区2结构'] },
+    { key: 'hot', name: '前区热点追踪', source: 'rule', reason: ['近10期前区热号，中区补权，遗漏≤2期加速确认'] },
+    { key: 'cold', name: '前区冷号狙击', source: 'rule', reason: ['遗漏≥10期深度冷号优先，前区4~9期回摆窗口'] },
+    { key: 'balanced', name: '跨度均衡控制', source: 'rule', reason: ['奇偶2:3或3:2，前区跨度25~32，和值60~110，尾数≥4种'] },
+    { key: 'trend', name: '中段延续趋势', source: 'rule', reason: ['10~30主体区间延续，短热度×17-中频×1.5动量公式'] },
+    { key: 'zoneSum', name: '前区区间锚定', source: 'rule', reason: ['前区三区(1-12/13-24/25-35)分布，主体区间10~30优先'] },
+    { key: 'pattern', name: '遗漏形态捕捉', source: 'rule', reason: ['4~9期回摆+14期超冷+冷热断层+尾数稀缺+中区加成'] }
+  ];
+
+  const defs = lotteryType === 'ssq' ? ssqDefs : dltDefs;
+
+  return defs.map(def => {
+    const entries = Object.entries(scoreMaps[def.key] || {}).sort((a, b) => b[1] - a[1]);
+    const mainBalls = buildBallSetFromScores(entries, mainCount, maxMain);
+    const backBalls = buildBallSetFromScores(blueEntries, backCount, maxBack);
+    const payload = lotteryType === 'ssq'
+      ? { type: 'ssq', redBalls: mainBalls, blueBall: backBalls[0] || 1 }
+      : { type: 'dlt', frontBalls: mainBalls, backBalls };
+    const backLabel = lotteryType === 'ssq' ? '蓝球候选号' : '后区候选号';
+    payload.reason = [...def.reason, scorePoolToReason(entries, 5, `${def.name}候选号`), scorePoolToReason(blueEntries, backCount === 1 ? 3 : 4, backLabel)];
+    payload.atomicKey = def.key;
+    payload.atomicName = def.name;
+    payload.atomicSource = def.source;
+    return payload;
+  });
+}
+
+function mergeAtomicKeys(atomicStrategies, keys, lotteryType) {
+  const picks = atomicStrategies.filter(item => keys.includes(item.atomicKey));
+  const score = {};
+  const backScore = {};
+  picks.forEach((item, idx) => {
+    const weight = picks.length - idx;
+    const main = lotteryType === 'ssq' ? (item.redBalls || []) : (item.frontBalls || []);
+    const back = lotteryType === 'ssq' ? [item.blueBall] : (item.backBalls || []);
+    main.forEach((n, order) => { score[n] = (score[n] || 0) + (weight * 20 - order); });
+    back.forEach((n, order) => { backScore[n] = (backScore[n] || 0) + (weight * 12 - order); });
+  });
+  return { score, backScore, picks };
+}
+
+function buildMasterFromAtomic(lotteryType, atomicStrategies, meta) {
+  const mainCount = lotteryType === 'ssq' ? 6 : 5;
+  const backCount = lotteryType === 'ssq' ? 1 : 2;
+  const maxMain = lotteryType === 'ssq' ? 33 : 35;
+  const maxBack = lotteryType === 'ssq' ? 16 : 12;
+  const merged = mergeAtomicKeys(atomicStrategies, meta.keys, lotteryType);
+  const mainBalls = filterAndFix(buildBallSetFromScores(Object.entries(merged.score).sort((a, b) => b[1] - a[1]), mainCount, maxMain), { peak: lotteryType === 'ssq' ? 102 : 82 }, { peak: lotteryType === 'ssq' ? 9 : 8 }, {}, lotteryType);
+  const backBalls = buildBallSetFromScores(Object.entries(merged.backScore).sort((a, b) => b[1] - a[1]), backCount, maxBack);
+  const payload = lotteryType === 'ssq'
+    ? { type: 'ssq', redBalls: mainBalls, blueBall: backBalls[0] || 1 }
+    : { type: 'dlt', frontBalls: mainBalls, backBalls };
+  payload.reason = [
+    ...meta.reason,
+    `融合原子策略：${merged.picks.map(x => x.atomicName).join(' + ')}`,
+    `主区结果：${mainBalls.map(n => String(n).padStart(2, '0')).join(' ')}`
+  ];
+  return createRecommendationEnvelope(meta, payload, []);
+}
+
+function evaluateStrategyHit(lotteryType, strategySet, drawRecord) {
+  if (!strategySet || !drawRecord) return { totalHit: 0 };
+  if (lotteryType === 'ssq') {
+    const redHit = (strategySet.redBalls || []).filter(n => (drawRecord.redNumbers || []).includes(n)).length;
+    const blueHit = strategySet.blueBall === drawRecord.blueNumber ? 1 : 0;
+    return { redHit, blueHit, totalHit: redHit + blueHit };
+  }
+  const frontHit = (strategySet.frontBalls || []).filter(n => (drawRecord.frontNumbers || []).includes(n)).length;
+  const backHit = (strategySet.backBalls || []).filter(n => (drawRecord.backNumbers || []).includes(n)).length;
+  return { frontHit, backHit, totalHit: frontHit + backHit };
+}
+
+function scoreAtomicStrategyByHistory(lotteryType, strategy, historyData) {
+  const usable = Array.isArray(historyData) ? historyData.slice(0, 30) : [];
+  if (usable.length === 0) {
+    return { avgHit: 0, bestHit: 0, sampleSize: 0, score: 0 };
+  }
+  const hits = usable.map(draw => evaluateStrategyHit(lotteryType, strategy, draw));
+  const totalHit = hits.reduce((sum, item) => sum + (item.totalHit || 0), 0);
+  const avgHit = totalHit / hits.length;
+  const bestHit = Math.max(...hits.map(item => item.totalHit || 0), 0);
+  const highHitCount = hits.filter(item => (item.totalHit || 0) >= (lotteryType === 'ssq' ? 3 : 2)).length;
+  const score = Number((avgHit * 100 + bestHit * 12 + highHitCount * 6).toFixed(2));
+  return { avgHit: Number(avgHit.toFixed(2)), bestHit, sampleSize: hits.length, score };
+}
+
+function generateRankedStrategyBoard(lotteryType, historyData, mlPrediction, mysticalPrediction) {
+  const atomicStrategies = buildAtomicStrategies(lotteryType, historyData, mlPrediction, mysticalPrediction);
+  const ssqBadges = {
+    ml: '🤖 ML模型', mystical: '🔮 玄学规律', hot: '🔥 红球热力',
+    cold: '❄️ 冷号猎手', balanced: '🛡️ 三区均衡', trend: '📈 短周期动量',
+    zoneSum: '🧭 区间和值', pattern: '🧩 形态反转'
+  };
+  const dltBadges = {
+    ml: '🤖 ML模型', mystical: '🔮 玄学规律', hot: '🔥 前区热点',
+    cold: '❄️ 前区冷号', balanced: '🛡️ 跨度均衡', trend: '📈 中段延续',
+    zoneSum: '🧭 前区区间', pattern: '🧩 遗漏形态'
+  };
+  const strategyBadgeMap = lotteryType === 'ssq' ? ssqBadges : dltBadges;
+
+  const rankedStrategies = atomicStrategies.map((item, index) => {
+    const perf = scoreAtomicStrategyByHistory(lotteryType, item, historyData);
+    return {
+      ...item,
+      masterKey: item.atomicKey,
+      masterName: item.atomicName,
+      badge: strategyBadgeMap[item.atomicKey] || `策略 ${index + 1}`,
+      summary: `近 ${perf.sampleSize} 期平均命中 ${perf.avgHit}，最佳命中 ${perf.bestHit}`,
+      role: item.atomicSource || 'rule',
+      rankScore: perf.score,
+      performance: perf,
+      reason: [
+        `历史表现：近 ${perf.sampleSize} 期平均命中 ${perf.avgHit}，最佳命中 ${perf.bestHit}`,
+        ...((Array.isArray(item.reason) ? item.reason : []).slice(0, 4))
+      ]
+    };
+  }).sort((a, b) => (b.rankScore || 0) - (a.rankScore || 0));
+
+  return { atomicStrategies, rankedStrategies };
+}
+
+function generateSmartRecommendation(lotteryType, historyData, mlPrediction, mysticalPrediction) {
   const recommendations = [];
   const recent10 = historyData.slice(0, 10);
   const recent30 = historyData.slice(0, 30);
@@ -129,16 +606,53 @@ function generateSmartRecommendation(lotteryType, historyData) {
     // 8. 尾数分布统计
     const digitStats = computeDigitStats(recent30, 'redNumbers');
 
-    // 生成5组不同策略
-    const strategies = [
-      { name: '热号为主', weight: 'hot' },
-      { name: '均衡型', weight: 'balanced' },
-      { name: '冷号回补', weight: 'cold' },
-      { name: '连号组合', weight: 'consecutive' },
-      { name: '区间精选', weight: 'zone' }
-    ];
+    // 生成5组策略：第1组ML，第2组玄学，第3-5组规则
+    const strategies = [];
+
+    // 第1组：ML模型预测
+    if (mlPrediction && mlPrediction.type === 'ssq') {
+      const mlRed = mlPrediction.redBalls || [];
+      const mlBlue = mlPrediction.blueBall || 8;
+      const mlReasons = [];
+      if (mlPrediction.modelAuc) mlReasons.push(`ML模型(AUC=${mlPrediction.modelAuc})`);
+      if (mlPrediction.probabilities) {
+        const top5Prob = Object.entries(mlPrediction.probabilities)
+          .sort((a, b) => parseFloat(b[1]) - parseFloat(a[1]))
+          .slice(0, 5)
+          .map(([n]) => parseInt(n));
+        mlReasons.push(`概率Top5: ${top5Prob.join(',')}`);
+      }
+      strategies.push({ name: 'ML模型推荐', weight: 'ml', redBalls: mlRed, blueBall: mlBlue, reasons: mlReasons });
+    }
+
+    // 第2组：玄学规律推荐
+    if (mysticalPrediction && mysticalPrediction.source === 'mystical') {
+      strategies.push({
+        name: '玄学规律',
+        weight: 'mystical',
+        redBalls: mysticalPrediction.redBalls || [],
+        blueBall: (mysticalPrediction.blueBalls || [])[0] || 8,
+        reasons: mysticalPrediction.reasons || []
+      });
+    }
+
+    // 第3-6组：规则策略（4组）
+    strategies.push({ name: '热号为主', weight: 'hot' });
+    strategies.push({ name: '均衡稳健', weight: 'balanced' });
+    strategies.push({ name: '冷号回补', weight: 'cold' });
+    strategies.push({ name: '区间精选', weight: 'zone' });
 
     strategies.forEach((strategy, idx) => {
+      // ML和玄学跳过生成（已直接构造）
+      if (strategy.weight === 'ml' || strategy.weight === 'mystical') {
+        recommendations.push({
+          setIndex: idx,
+          redBalls: strategy.redBalls,
+          blueBall: strategy.blueBall,
+          reason: strategy.reasons,
+        });
+        return;
+      }
       const result = generateSSQSet(
         strategy, hotReds, warmReds, missingReds,
         consecutiveRate, avgOdd, zoneCount, blueFreq,
@@ -198,15 +712,47 @@ function generateSmartRecommendation(lotteryType, historyData) {
     // 尾数统计（前区）
     const frontDigitStats = computeDigitStats(recent30, 'frontNumbers');
 
-    const strategies = [
-      { name: '热号追踪', weight: 'hot' },
-      { name: '均衡稳健', weight: 'balanced' },
-      { name: '冷号回补', weight: 'cold' },
-      { name: '连号组合', weight: 'consecutive' },
-      { name: '和值优选', weight: 'sum' }
-    ];
+    const strategies = [];
 
-    strategies.forEach(strategy => {
+    // 第1组：ML模型预测
+    if (mlPrediction && mlPrediction.type === 'dlt') {
+      const mlFront = mlPrediction.frontBalls || [];
+      const mlBack = mlPrediction.backBalls || [];
+      const mlReasons = [];
+      if (mlPrediction.modelAuc) mlReasons.push(`ML模型(AUC=${mlPrediction.modelAuc})`);
+      strategies.push({ name: 'ML模型推荐', weight: 'ml', frontBalls: mlFront, backBalls: mlBack, reasons: mlReasons });
+    }
+
+    // 第2组：玄学规律推荐
+    if (mysticalPrediction && mysticalPrediction.source === 'mystical') {
+      strategies.push({
+        name: '玄学规律',
+        weight: 'mystical',
+        frontBalls: mysticalPrediction.redBalls || [],
+        backBalls: mysticalPrediction.blueBalls || [],
+        reasons: mysticalPrediction.reasons || []
+      });
+    }
+
+    // 第3-6组：规则策略（4组）
+    strategies.push({ name: '热号追踪', weight: 'hot' });
+    strategies.push({ name: '均衡稳健', weight: 'balanced' });
+    strategies.push({ name: '冷号回补', weight: 'cold' });
+    strategies.push({ name: '和值优选', weight: 'sum' });
+    strategies.push({ name: '区间精选', weight: 'zone' });
+    strategies.push({ name: '连号组合', weight: 'consecutive' });
+    strategies.push({ name: '形态反转', weight: 'pattern' });
+
+    strategies.forEach((strategy, idx) => {
+      if (strategy.weight === 'ml' || strategy.weight === 'mystical') {
+        recommendations.push({
+          setIndex: idx,
+          frontBalls: strategy.frontBalls,
+          backBalls: strategy.backBalls,
+          reason: strategy.reasons,
+        });
+        return;
+      }
       const result = generateDLTSet(
         strategy, hotFronts, warmFronts, missingFronts,
         hotBacks, backFreq, consecutiveRate,
@@ -332,7 +878,7 @@ function generateSSQSet(strategy, hotReds, warmReds, missingReds,
   };
 }
 
-// ========== 大乐透生成 ==========
+// ========== 大乐透生成（完整版：含区间、形态反转）==========
 function generateDLTSet(strategy, hotFronts, warmFronts, missingFronts,
                         hotBacks, backFreq, consecutiveRate,
                         frontMissing, backMissing, frontSumStats, frontACStats, frontDigitStats) {
@@ -400,6 +946,32 @@ function generateDLTSet(strategy, hotFronts, warmFronts, missingFronts,
         frontBalls = filterAndFix(frontBalls, frontSumStats, frontACStats, frontDigitStats, 'dlt');
         const sum = frontBalls.reduce((a, b) => a + b, 0);
         reasons.push(`和值${sum}，在黄金区间${frontSumStats.peak}±15`);
+      }
+      break;
+
+    case 'zone':
+      {
+        // 大乐透专属区间精选：三区(1-12/13-24/25-35)，主体区间10~30优先
+        frontBalls = generateByZoneDLT(hotFronts, warmFronts, missingFronts, frontMissing);
+        frontBalls = filterAndFix(frontBalls, frontSumStats, frontACStats, frontDigitStats, 'dlt');
+        const z1 = frontBalls.filter(n => n <= 12).length;
+        const z2 = frontBalls.filter(n => n > 12 && n <= 24).length;
+        const z3 = frontBalls.filter(n => n > 24).length;
+        const sum = frontBalls.reduce((a, b) => a + b, 0);
+        reasons.push(`前区三区比${z1}:${z2}:${z3}`);
+        reasons.push(`和值${sum}，主体区间10~30覆盖`);
+      }
+      break;
+
+    case 'pattern':
+      {
+        // 大乐透专属形态反转：4~9期回摆 + 14期超冷 + 冷热断层
+        const patternPick = generateDLTPattern(missingFronts, warmFronts, hotFronts, frontMissing);
+        frontBalls = patternPick;
+        frontBalls = filterAndFix(frontBalls, frontSumStats, frontACStats, frontDigitStats, 'dlt');
+        const avgMissing = Math.round(frontBalls.reduce((s, n) => s + frontMissing[n], 0) / 5);
+        reasons.push(`遗漏形态选号，平均遗漏${avgMissing}期`);
+        reasons.push(`融合4~9期回摆与14+超冷形态`);
       }
       break;
   }
@@ -804,6 +1376,78 @@ function generateBySumAdv(hotFronts, warmFronts, missingFronts, minSum, maxSum, 
     }
   }
   return best || pickRandom(Array.from({ length: 35 }, (_, i) => i + 1), 5);
+}
+
+function generateByZoneDLT(hotFronts, warmFronts, missingFronts, frontMissing) {
+  const result = [];
+  const maxNum = 35;
+  const pool = [...hotFronts, ...warmFronts, ...missingFronts];
+
+  // 大乐透三区：1-12 / 13-24 / 25-35
+  // 主体区间10~30优先，取2+2+1或1+2+2
+  const z1Pool = pool.filter(n => n <= 12);
+  const z2Pool = pool.filter(n => n > 12 && n <= 24);
+  const z3Pool = pool.filter(n => n > 24);
+
+  // 中区优先取2个
+  result.push(...pickRandom(z2Pool.length > 0 ? z2Pool : Array.from({ length: 12 }, (_, i) => i + 13), 2));
+
+  // 一区和三区各取1-2个
+  const remainCount = 3;
+  const z1Count = Math.random() > 0.5 ? 2 : 1;
+  const z3Count = remainCount - z1Count;
+
+  result.push(...pickRandom(z1Pool.length > 0 ? z1Pool : Array.from({ length: 12 }, (_, i) => i + 1), z1Count));
+  result.push(...pickRandom(z3Pool.length > 0 ? z3Pool : Array.from({ length: 11 }, (_, i) => i + 25), z3Count));
+
+  // 补够5个，优先主体区间10~30
+  while (result.length < 5) {
+    const r = Math.floor(Math.random() * 21) + 10; // 10~30
+    if (!result.includes(r)) result.push(r);
+  }
+
+  return [...new Set(result)].slice(0, 5);
+}
+
+function generateDLTPattern(missingFronts, warmFronts, hotFronts, frontMissing) {
+  // 大乐透形态反转：融合多种遗漏形态
+  const result = [];
+  const maxNum = 35;
+
+  // 回摆信号：遗漏4~9期的号码
+  const reboundPool = [...missingFronts, ...warmFronts, ...hotFronts]
+    .filter(n => frontMissing[n] >= 4 && frontMissing[n] <= 9);
+
+  // 超冷信号：遗漏14期以上
+  const superCold = [...missingFronts]
+    .filter(n => frontMissing[n] >= 14)
+    .sort((a, b) => frontMissing[b] - frontMissing[a]);
+
+  // 冷热断层：冷号+温号交替
+  const coldWarmMix = [...missingFronts, ...warmFronts]
+    .filter(n => frontMissing[n] >= 2 && frontMissing[n] <= 11)
+    .sort((a, b) => frontMissing[b] - frontMissing[a]);
+
+  // 构建组合
+  if (reboundPool.length >= 2) {
+    result.push(...pickRandom(reboundPool, 2));
+  }
+  if (superCold.length >= 1 && result.length < 5) {
+    result.push(pickRandom(superCold, 1)[0]);
+  }
+  // 补充冷温交替号
+  const remaining = coldWarmMix.filter(n => !result.includes(n));
+  if (remaining.length > 0 && result.length < 5) {
+    result.push(...pickRandom(remaining, Math.min(2, remaining.length)));
+  }
+  // 最终补够
+  const allPool = [...missingFronts, ...warmFronts, ...hotFronts];
+  while (result.length < 5) {
+    const r = pickRandom(allPool, 1)[0];
+    if (r && !result.includes(r)) result.push(r);
+  }
+
+  return [...new Set(result)].slice(0, 5);
 }
 
 function rebalanceOddEven(balls, targetOdd) {

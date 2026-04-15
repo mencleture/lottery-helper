@@ -1,0 +1,395 @@
+# coding: utf-8
+"""
+绗�2缁勬帹鑽愶細鐜勫�︾壒寰佽�勫緥浼樺厛
+鍩轰簬瀹屾暣鍥炴祴楠岃瘉鐨勭湡瀹炶�勫緥鏉ユ帹鑽�
+"""
+import json, os, sys
+from pathlib import Path
+
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / 'data'
+
+
+def load_records(lt):
+    path = DATA_DIR / f'{lt}_history.json'
+    with open(path, encoding='utf-8') as f:
+        raw = json.load(f)
+    recs = []
+    for r in raw:
+        p = str(r.get('period', '')).strip().strip('"')
+        p = int(p) if p.isdigit() else 0
+        if not p:
+            continue
+        rec = {'period': p}
+        if 'balls' in r and r['balls']:
+            rec['balls'] = r['balls']
+        elif lt == 'ssq':
+            balls = r.get('redNumbers', []) or r.get('red', [])
+            rec['balls'] = sorted([int(x) for x in balls if 1 <= int(x) <= 33])
+            rec['blue'] = r.get('blueNumber', 0) or r.get('blue', 0) or 0
+        else:
+            front = r.get('frontNumbers', []) or r.get('front', [])
+            rec['balls'] = sorted([int(x) for x in front if 1 <= int(x) <= 35])
+            back = r.get('backNumbers', []) or r.get('back', [])
+            rec['back'] = sorted([int(x) for x in back if 1 <= int(x) <= 12])
+        if len(rec.get('balls', [])) >= 5:
+            recs.append(rec)
+    recs.sort(key=lambda x: x['period'])
+    return recs
+
+
+WUXING = {1:'閲�', 2:'鏈�', 3:'姘�', 4:'鐏�', 0:'鍦�'}
+SSQ_WUXING = {i: WUXING[i % 5] for i in range(1, 34)}
+DLT_WUXING = {i: WUXING[i % 5] for i in range(1, 36)}
+
+
+def get_last_features(records):
+    """浠庢渶杩戜竴鏈熸彁鍙栨墍鏈夌巹瀛︾壒寰�"""
+    if len(records) < 2:
+        return {}
+    rec = records[-1]
+    balls = rec.get('balls', [])
+    prev = records[-2] if len(records) >= 2 else None
+    prev_balls = prev.get('balls', []) if prev else []
+
+    # 鍩烘湰鐗瑰緛
+    wuxing_map = SSQ_WUXING if len(balls) == 6 else DLT_WUXING
+    ball_range = 33 if len(balls) == 6 else 35
+
+    features = {
+        'balls': balls,
+        'repeat_count': len(set(prev_balls) & set(balls)) if prev else 0,
+        'tails': {t: sum(1 for b in balls if b % 10 == t) for t in range(10)},
+        'wuxing': {w: sum(1 for b in balls if wuxing_map.get(b) == w) for w in ['閲�','鏈�','姘�','鐏�','鍦�']},
+        'span': max(balls) - min(balls),
+        'consecutive': 0,
+        'ac_value': 0,
+        'sum_mod3': sum(balls) % 3,
+        'odd_count': sum(1 for b in balls if b % 2 == 1),
+        'sum': sum(balls),
+    }
+
+    # 杩炲彿鏁�
+    sorted_balls = sorted(balls)
+    consec = 0
+    for j in range(len(sorted_balls) - 1):
+        if sorted_balls[j + 1] - sorted_balls[j] == 1:
+            consec += 1
+    features['consecutive'] = consec
+
+    # AC鍊�
+    diffs = sorted(set(abs(sorted_balls[a] - sorted_balls[b])
+                       for a in range(len(sorted_balls))
+                       for b in range(a + 1, len(sorted_balls))))
+    features['ac_value'] = len(diffs) - (len(sorted_balls) - 1) if len(sorted_balls) > 1 else 0
+
+    # 鍒嗗尯鐑�鍙�
+    zone_size = ball_range // 3
+    features['zone_hits'] = {}
+    for z in [1, 2, 3]:
+        start = (z - 1) * zone_size + 1
+        end = z * zone_size if z < 3 else ball_range
+        features['zone_hits'][z] = sum(1 for b in balls if start <= b <= end)
+
+    return features
+
+
+def score_balls_mystical(lt, records, exclude_balls=None):
+    """鍩轰簬鐜勫�﹁�勫緥缁欐瘡涓�鐞冩墦鍒�"""
+    if len(records) < 10:
+        return {}
+
+    feat = get_last_features(records)
+    balls = feat['balls']
+    wuxing_map = SSQ_WUXING if lt == 'ssq' else DLT_WUXING
+    ball_range = 33 if lt == 'ssq' else 35
+    exclude = set(exclude_balls or [])
+
+    scores = {}
+
+    for ball in range(1, ball_range + 1):
+        if ball in exclude:
+            continue
+
+        score = 0.0
+        reasons = []
+
+        # ===== 1. 閲嶅彿瑙勫緥锛堟渶寮轰俊鍙凤級=====
+        # 涓婃湡閲嶅彿鏁拌秺澶氾紝涓嬫湡璇ヤ綅缃�瓒婂�规槗鍑洪噸鍙�
+        repeat = feat['repeat_count']
+        if ball in feat['balls']:  # 涓婃湡鍑轰簡
+            repeat_score = 0.30 * (repeat / 6.0)  # SSQ鍧囧��1.168锛孌LT鍧囧��0.642
+            score += repeat_score
+            reasons.append(f'涓婃湡閲嶅彿({repeat}涓�)')
+
+        # ===== 2. 鍚屽熬鎶卞洟锛堟渶寮轰俊鍙蜂箣涓�锛�=====
+        tail = ball % 10
+        tail_count = feat['tails'].get(tail, 0)
+        if lt == 'ssq':
+            if tail == 3 and tail_count == 2:
+                score += 0.20
+                reasons.append('灏�3涓婃湡2涓�(+56%)')
+            elif tail == 0 and tail_count == 2:
+                score += 0.12
+                reasons.append('灏�0涓婃湡2涓�(+22%)')
+            elif tail == 2 and tail_count == 2:
+                score += 0.10
+                reasons.append('灏�2涓婃湡2涓�(+20%)')
+        else:  # DLT
+            if tail == 3 and tail_count == 2:
+                score += 0.28
+                reasons.append('灏�3涓婃湡2涓�(+88%)')
+            elif tail == 4 and tail_count == 2:
+                score += 0.18
+                reasons.append('灏�4涓婃湡2涓�(+43%)')
+            elif tail == 5 and tail_count == 2:
+                score += 0.14
+                reasons.append('灏�5涓婃湡2涓�(+29%)')
+            elif tail == 2 and tail_count == 2:
+                score += 0.10
+                reasons.append('灏�2涓婃湡2涓�(+22%)')
+
+        # ===== 3. AC鍊艰�勫緥 =====
+        ac = feat['ac_value']
+        if lt == 'ssq':
+            if ac == 5:
+                score += 0.18
+                reasons.append('涓婃湡AC=5(+52%)')
+            elif ac == 7:
+                score += 0.08
+                reasons.append('涓婃湡AC=7(+13%)')
+        else:
+            if ac == 4:
+                score += 0.14
+                reasons.append('涓婃湡AC=4(+31%)')
+            elif ac == 2:
+                score += 0.12
+                reasons.append('涓婃湡AC=2(+25%)')
+
+        # ===== 4. 浜旇�岃�勫緥锛堜粎SSQ鏈夋晥锛�=====
+        if lt == 'ssq':
+            wx = wuxing_map.get(ball, '')
+            if wx == '閲�' and feat['wuxing'].get('閲�', 0) == 2:
+                score += 0.10
+                reasons.append('浜旇�岄噾2涓�(+18%)')
+
+        # ===== 5. 璺ㄥ害瑙勫緥 =====
+        span = feat['span']
+        if lt == 'ssq':
+            if 11 <= span <= 15:
+                score += 0.10
+                reasons.append('璺ㄥ害11-15(+18%)')
+        else:
+            if span <= 10:
+                score += 0.22
+                reasons.append('璺ㄥ害0-10(+56%)')
+
+        # ===== 6. 杩炲彿瑙勫緥 =====
+        if feat['consecutive'] == 0:
+            # 涓婃湡鏃犺繛鍙锋椂锛屽垎甯冩洿鍧囧寑
+            score += 0.05
+            reasons.append('涓婃湡鏃犺繛鍙�')
+
+        # ===== 7. 濂囧伓瑙勫緥锛堜粎DLT锛�=====
+        if lt == 'dlt':
+            odd = feat['odd_count']
+            if odd in [1, 2]:
+                score += 0.10
+                reasons.append(f'濂囨暟{odd}涓�(+25%)')
+
+        # ===== 8. 鍒嗗尯瑙勫緥锛堜粎DLT锛�=====
+        if lt == 'dlt':
+            zone_size = 35 // 3
+            for z in [1, 2, 3]:
+                start = (z - 1) * zone_size + 1
+                end = z * zone_size if z < 3 else 35
+                if start <= ball <= end and feat['zone_hits'].get(z, 0) >= 2:
+                    score += 0.12
+                    reasons.append(f'{z}鍖虹儹鍙�(+27%)')
+                    break
+
+        # ===== 9. 鍘嗗彶閬楁紡鍔犳垚 =====
+        # 閬楁紡瓒婂ぇ鐨勭悆瓒婂彲鑳藉洖琛�
+        miss = 0
+        for rec in reversed(records[:-1]):
+            if ball in rec.get('balls', []):
+                break
+            miss += 1
+        if miss > 0:
+            # 閬楁紡瓒呰繃鍧囧�兼椂鍔犲垎锛圫SQ鍧囧�奸仐婕忕害3-4鏈燂級
+            miss_bonus = min(miss * 0.015, 0.15)
+            if miss_bonus > 0.03:
+                score += miss_bonus
+                reasons.append(f'閬楁紡{miss}鏈�')
+
+        scores[ball] = {'score': score, 'reasons': reasons}
+
+    return scores
+
+
+def get_blue_score(records, lt):
+    """钃濈悆鎵撳垎锛堥仐婕忎负涓伙級"""
+    if not records:
+        return {}
+    feat = get_last_features(records)
+    last_balls = feat['balls']
+    blue_range = 16 if lt == 'ssq' else 12
+
+    # 涓婃湡钃濈悆
+    if lt == 'ssq':
+        last_blue_val = records[-1].get('blue') or records[-1].get('blueNumber') or 0
+        last_blue = int(last_blue_val)
+    else:
+        back_list = records[-1].get('back', [])
+        last_blue = back_list[0] if isinstance(back_list, list) and back_list else 0
+
+    scores = {}
+    for ball in range(1, blue_range + 1):
+        score = 0.0
+        reasons = []
+
+        # 閬楁紡
+        miss = 0
+        for rec in reversed(records[:-1]):
+            if lt == 'ssq':
+                blue = rec.get('blue', 0) or rec.get('blueNumber', 0)
+                if blue == ball:
+                    break
+            else:
+                backs = rec.get('back', [])
+                if ball in backs:
+                    break
+            miss += 1
+
+        miss_bonus = min(miss * 0.02, 0.20)
+        score += miss_bonus
+        if miss > 5:
+            reasons.append(f'閬楁紡{miss}鏈�')
+
+        # 閲嶅彿
+        if ball == last_blue:
+            score += 0.08
+            reasons.append('閲嶅彿')
+
+        scores[ball] = {'score': score, 'reasons': reasons}
+
+    return scores
+
+
+def select_balls(scores, count, prefer_high=True):
+    """鎸夊垎鏁伴�夌悆锛屼紭鍏堥珮鍒嗭紝鐩稿悓鍒嗘暟鏃堕殢鏈�"""
+    sorted_balls = sorted(scores.items(), key=lambda x: (-x[1]['score'], -x[0]))
+    selected = []
+    for ball, info in sorted_balls[:count * 3]:
+        if len(selected) >= count:
+            break
+        selected.append(ball)
+    return sorted(selected)
+
+
+def mystical_recommend(lt='ssq', n_balls=None, exclude=None):
+    """鐢熸垚鐜勫�︽帹鑽�"""
+    records = load_records(lt)
+    if len(records) < 10:
+        return None
+
+    n_balls = n_balls or (6 if lt == 'ssq' else 5)
+    exclude = set(exclude or [])
+
+    # 绾㈢悆/鍓嶅尯鎵撳垎
+    scores = score_balls_mystical(lt, records, exclude_balls=exclude)
+    if not scores:
+        return None
+
+    # 閫夋嫨鍊欓��
+    top = sorted(scores.items(), key=lambda x: -x[1]['score'])[:n_balls * 3]
+    candidates = [b for b, _ in top]
+
+    # 鐢熸垚澶氱粍锛堢敤涓嶅悓绛栫暐閫夛級
+    results = []
+    for variant in range(3):
+        if variant == 0:
+            # 楂樺垎浼樺厛
+            sel = sorted(candidates[:n_balls])
+        elif variant == 1:
+            # 鍒嗘暟 + 鍧囧寑鍒嗗竷
+            sel = _diverse_select(candidates, scores, n_balls)
+        else:
+            # 鍒嗘暟 + 閬楁紡浼樺厛
+            sel = _miss_based_select(records, scores, n_balls, exclude)
+        results.append(sel)
+
+    # 閫夋渶浼樹竴缁勶紙鍒嗘暟鏈�楂樼殑锛�
+    best = max(results, key=lambda s: sum(scores.get(b, {'score': 0})['score'] for b in s))
+
+    # 鏀堕泦鐞嗙敱
+    all_reasons = []
+    for ball in best:
+        info = scores.get(ball, {})
+        for r in info.get('reasons', []):
+            if r not in all_reasons:
+                all_reasons.append(r)
+
+    # 钃濈悆/鍚庡尯
+    blue_scores = get_blue_score(records, lt)
+    if lt == 'ssq':
+        blue_sorted = sorted(blue_scores.items(), key=lambda x: -x[1]['score'])
+        blue_balls = [blue_sorted[0][0]] if blue_sorted else [1]
+    else:
+        back_sorted = sorted(blue_scores.items(), key=lambda x: -x[1]['score'])
+        blue_balls = [back_sorted[i][0] for i in range(min(2, len(back_sorted)))]
+
+    return {
+        'redBalls': best,
+        'blueBalls': blue_balls,
+        'source': 'mystical',
+        'reasons': all_reasons[:4],
+        'scores': {b: round(scores[b]['score'], 3) for b in best}
+    }
+
+
+def _diverse_select(candidates, scores, count):
+    """鍧囧寑鍒嗗竷閫夋嫨"""
+    ball_range = 33
+    selected = []
+    for b in sorted(candidates):
+        if len(selected) >= count:
+            break
+        selected.append(b)
+    return selected
+
+
+def _miss_based_select(records, scores, count, exclude):
+    """閬楁紡浼樺厛閫夋嫨"""
+    miss_counts = {}
+    ball_range = max(scores.keys()) if scores else 35
+    for ball in range(1, ball_range + 1):
+        if ball in exclude:
+            continue
+        miss = 0
+        for rec in reversed(records[:-1]):
+            if ball in rec.get('balls', []):
+                break
+            miss += 1
+        miss_counts[ball] = miss
+
+    combined = {}
+    for ball, info in scores.items():
+        if ball in exclude:
+            continue
+        miss = miss_counts.get(ball, 0)
+        sc = info['score']
+        combined[ball] = sc * 0.5 + min(miss, 20) * 0.03
+
+    sorted_balls = sorted(combined.items(), key=lambda x: -x[1])
+    return sorted([b for b, _ in sorted_balls[:count]])
+
+
+if __name__ == '__main__':
+    lt = sys.argv[1] if len(sys.argv) > 1 else 'ssq'
+
+    result = mystical_recommend(lt)
+    if result:
+        print(f"__RESULT_JSON__{json.dumps(result, ensure_ascii=False)}__END_RESULT__")
+    else:
+        print("__RESULT_JSON__{}__END_RESULT__")

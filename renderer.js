@@ -1,218 +1,365 @@
 // ========== 状态管理（全局） ==========
-// 注意：所有状态按彩种分开存储
 let currentLotteryType = 'ssq';
+let currentView = 'forecast';
+let currentTheme = 'dark';
+let currentHistoryTrendRange = 60;
+let currentHistoryArchiveMode = 'card';
+let currentHistoryStrategyFilter = 'all';
 let isLoading = false;
 
-// 状态池：每种彩种独立的状态
-const statePool = {
+const lotteryMetaMap = {
   ssq: {
-    historyData: [],
-    currentPeriod: null,          // 当前推荐的期号
-    allSets: [],                  // 5组备选推荐
-    activeSetIndex: 0,            // 当前选中哪一组
-    confirmedRecommendation: null,// 已确认的推荐 { period, setIndex, set }
-    recommendationHistory: [],    // 往期推荐历史
+    name: '双色球',
+    short: '红6蓝1 · 周二四日',
+    heroTitle: '双色球预测中心',
+    heroDesc: '聚焦双色球的最新预测、图表分析与历史回溯，所有模块分开展示，页面更简洁。'
   },
   dlt: {
-    historyData: [],
-    currentPeriod: null,
-    allSets: [],
-    activeSetIndex: 0,
-    confirmedRecommendation: null,
-    recommendationHistory: [],
+    name: '大乐透',
+    short: '前5后2 · 周一三六',
+    heroTitle: '大乐透预测中心',
+    heroDesc: '聚焦大乐透的预测、走势与历史记录，避免多模块同屏导致视觉拥挤。'
   }
 };
 
-// ========== 持久化（localStorage） ==========
+const statePool = {
+  ssq: { historyData: [], currentPeriod: null, allSets: [], activeSetIndex: 0, masterRecommendations: [], activeMasterIndex: 0, atomicStrategies: [], confirmedRecommendation: null, recommendationHistory: [], statsData: null },
+  dlt: { historyData: [], currentPeriod: null, allSets: [], activeSetIndex: 0, masterRecommendations: [], activeMasterIndex: 0, atomicStrategies: [], confirmedRecommendation: null, recommendationHistory: [], statsData: null }
+};
+
+const strategyMetaMap = {
+  ssq: [
+    { key: 'ml', name: 'ML模型推荐', badge: '🤖 ML模型', desc: 'RF+GB集成，三区+尾数+AC值特征工程' },
+    { key: 'mystical', name: '玄学规律推荐', badge: '🔮 玄学规律', desc: '龙虎斗、五行生克、尾数玄机' },
+    { key: 'hot', name: '红球热力追踪', badge: '🔥 红球热力', desc: '三区热度加权，中短遗漏窗口确认' },
+    { key: 'cold', name: '冷号回补猎手', badge: '❄️ 冷号猎手', desc: '遗漏≥8期优先，边区冷号补偿' },
+    { key: 'balanced', name: '三区均衡锁定', badge: '🛡️ 三区均衡', desc: '奇偶3:3，三区2:2:2，和值75~130' },
+    { key: 'trend', name: '短周期动量', badge: '📈 短周期动量', desc: '非中区节奏分加成' },
+    { key: 'zoneSum', name: '区间和值锚定', badge: '🧭 区间和值', desc: '中区(12-22)核心，尾数稀缺' },
+    { key: 'pattern', name: '形态反转捕捉', badge: '🧩 形态反转', desc: '3~8期回摆+15期超冷+冷温断层' }
+  ],
+  dlt: [
+    { key: 'ml', name: 'ML模型推荐', badge: '🤖 ML模型', desc: 'RF+GB集成，跨度+和值+连号特征' },
+    { key: 'mystical', name: '玄学规律推荐', badge: '🔮 玄学规律', desc: '龙虎斗适配前区5+后区2结构' },
+    { key: 'hot', name: '前区热点追踪', badge: '🔥 前区热点', desc: '中区补权，遗漏≤2期加速确认' },
+    { key: 'cold', name: '前区冷号狙击', badge: '❄️ 前区冷号', desc: '遗漏≥10期深度冷号优先' },
+    { key: 'balanced', name: '跨度均衡控制', badge: '🛡️ 跨度均衡', desc: '奇偶2:3/3:2，跨度25~32' },
+    { key: 'trend', name: '中段延续趋势', badge: '📈 中段延续', desc: '10~30主体区间延续' },
+    { key: 'zoneSum', name: '前区区间锚定', badge: '🧭 前区区间', desc: '三区(1-12/13-24/25-35)分布' },
+    { key: 'pattern', name: '遗漏形态捕捉', badge: '🧩 遗漏形态', desc: '4~9期回摆+14期超冷+冷热断层' }
+  ]
+};
+
+function getStrategyMeta() {
+  return strategyMetaMap[currentLotteryType] || strategyMetaMap.ssq;
+}
+
+function rebuildMasterRecommendations(state) {
+  const atomicSets = Array.isArray(state.atomicStrategies) ? state.atomicStrategies.filter(Boolean) : [];
+
+  // 保存已有的 performance 数据（按策略名映射），rebuild 后恢复
+  const savedPerf = {};
+  if (state.masterRecommendations) {
+    state.masterRecommendations.forEach(item => {
+      if (item.performance) savedPerf[item.name] = item.performance;
+    });
+  }
+
+  const dedupedSets = [];
+  const seenKeys = new Set();
+
+  atomicSets.forEach(set => {
+    const key = set?.atomicKey || set?.masterKey || set?.atomicName || set?.masterName;
+    if (!key || seenKeys.has(key)) return;
+    seenKeys.add(key);
+    dedupedSets.push({
+      ...set,
+      masterKey: set.masterKey || set.atomicKey,
+      masterName: set.masterName || set.atomicName,
+      role: set.role || set.atomicSource || 'rule'
+    });
+  });
+
+  state.masterRecommendations = dedupedSets.map((set, index) => {
+    const matchedMeta = getStrategyMeta().find(meta => meta.key === (set.masterKey || set.atomicKey));
+    const fallbackMeta = matchedMeta || { key: `custom-${index}`, name: set.masterName || set.atomicName || `推荐${index + 1}`, badge: set.badge || `推荐 ${index + 1}`, desc: '策略推荐' };
+    const name = fallbackMeta.name;
+    return {
+      ...fallbackMeta,
+      key: set.masterKey || set.atomicKey || fallbackMeta.key,
+      name,
+      badge: set.badge || fallbackMeta.badge,
+      desc: fallbackMeta.desc,
+      role: set.role || fallbackMeta.role || 'mixed',
+      // 优先用保存的 performance（来自 backfill），其次用 set 自带的
+      performance: savedPerf[name] || set.performance || null,
+      index,
+      set
+    };
+  }).filter(item => !!item.set);
+
+  sortMasterRecommendations(state);
+
+  if (state.activeMasterIndex >= state.masterRecommendations.length) state.activeMasterIndex = 0;
+  state.activeSetIndex = state.activeMasterIndex;
+}
+
+function sortMasterRecommendations(state) {
+  state.masterRecommendations.sort((a, b) => {
+    const aAvg = a.performance?.avgHit ?? -1;
+    const bAvg = b.performance?.avgHit ?? -1;
+    if (bAvg !== aAvg) return bAvg - aAvg;
+    const aBest = a.performance?.bestHit ?? -1;
+    const bBest = b.performance?.bestHit ?? -1;
+    return bBest - aBest;
+  });
+}
+
+function getActiveMasterRecommendation(state) {
+  rebuildMasterRecommendations(state);
+  return state.masterRecommendations[state.activeMasterIndex] || null;
+}
+
 function saveState() {
   try {
     localStorage.setItem('lottery_statePool', JSON.stringify(statePool));
     localStorage.setItem('lottery_currentType', currentLotteryType);
+    localStorage.setItem('lottery_currentView', currentView);
+    localStorage.setItem('lottery_theme', currentTheme);
   } catch (e) {
     console.warn('保存状态失败:', e);
   }
 }
 
+const STATE_SCHEMA_VERSION = 2;
+let _pendingMigrationRegenerate = false;
+
 function loadState() {
   try {
+    const savedVersion = localStorage.getItem('lottery_stateVersion');
+    const needMigration = !savedVersion || Number(savedVersion) < STATE_SCHEMA_VERSION;
+
     const saved = localStorage.getItem('lottery_statePool');
     const savedType = localStorage.getItem('lottery_currentType');
+    const savedView = localStorage.getItem('lottery_currentView');
+    const savedTheme = localStorage.getItem('lottery_theme');
     if (saved) {
       const parsed = JSON.parse(saved);
-      // 恢复各彩种状态（保留默认结构，只覆盖有数据的字段）
       ['ssq', 'dlt'].forEach(type => {
         if (parsed[type]) {
           Object.assign(statePool[type], parsed[type]);
+          rebuildMasterRecommendations(statePool[type]);
         }
       });
     }
-    if (savedType && ['ssq', 'dlt'].includes(savedType)) {
-      currentLotteryType = savedType;
+
+    if (needMigration) {
+      _pendingMigrationRegenerate = true;
+      localStorage.setItem('lottery_stateVersion', String(STATE_SCHEMA_VERSION));
     }
+
+    if (savedType && ['ssq', 'dlt'].includes(savedType)) currentLotteryType = savedType;
+    if (savedView && ['forecast', 'charts', 'history'].includes(savedView)) currentView = savedView;
+    if (savedTheme && ['dark', 'light'].includes(savedTheme)) currentTheme = savedTheme;
   } catch (e) {
     console.warn('加载状态失败:', e);
   }
 }
 
-// ========== 状态读写辅助 ==========
-function getState() {
-  return statePool[currentLotteryType];
+function getState() { return statePool[currentLotteryType]; }
+
+function applyTheme() {
+  document.body.setAttribute('data-theme', currentTheme);
+  const icon = document.getElementById('themeIcon');
+  const text = document.getElementById('themeText');
+  if (icon) icon.textContent = currentTheme === 'dark' ? '🌙' : '🌞';
+  if (text) text.textContent = currentTheme === 'dark' ? '夜间模式' : '白天模式';
 }
 
-// ========== 计算下一期（还没开奖的那个） ==========
-// 期号格式：5位，如 26039 = 2026年第039期
-// 双色球开奖日：周二、周四、周日
-// 大乐透开奖日：周一、周三、周六
+function toggleTheme() {
+  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  applyTheme();
+  renderAll();
+  saveState();
+  showToast(currentTheme === 'dark' ? '已切换到夜间模式' : '已切换到白天模式');
+}
+
 function getNextPeriod(latestPeriod, type, latestDate) {
   const p = latestPeriod.toString();
-  // 前2位是年份后2位，后3位是序号
-  const yearShort = parseInt(p.slice(0, 2));   // 26 → 2026
-  const seq = parseInt(p.slice(2));             // 039
-  const fullYear = 2000 + yearShort;
-
-  // 计算下一期的序号（跨年处理）
+  const yearShort = parseInt(p.slice(0, 2));
+  const seq = parseInt(p.slice(2));
   const nextSeq = seq + 1;
-  let nextPeriod;
-  if (nextSeq > 999) {
-    nextPeriod = String(yearShort + 1).padStart(2, '0') + '001';
-  } else {
-    nextPeriod = String(yearShort).padStart(2, '0') + String(nextSeq).padStart(3, '0');
-  }
+  let nextPeriod = nextSeq > 999
+    ? String(yearShort + 1).padStart(2, '0') + '001'
+    : String(yearShort).padStart(2, '0') + String(nextSeq).padStart(3, '0');
 
-  // 判断今天是否已经是下一期的开奖日（或已过），如果是则再+1
   const now = new Date();
-  const todayDow = now.getDay(); // 0=周日,1=周一,...,6=周六
-
-  // 双色球：周二(2)、周四(4)、周日(0)
-  // 大乐透：周一(1)、周三(3)、周六(6)
-  const drawDays = type === 'ssq' ? [0, 2, 4] : [1, 3, 6];
-
-  // 最新已开奖期的开奖日（从日期字符串解析）
-  let latestDrawDow = -1;
-  if (latestDate) {
-    const d = new Date(latestDate);
-    if (!isNaN(d)) latestDrawDow = d.getDay();
-  }
-
-  // 找到下一个开奖日（从今天往后数，包含今天）
-  // 如果今天就是开奖日，且今天 > 最新已开奖日期，说明今天这期还没出结果
-  // 如果今天已过了下一个开奖日，说明下一期也已开奖，需要再+1
   const todayStr = now.toISOString().slice(0, 10);
-  const latestDateStr = latestDate || '';
-
-  // 简单判断：如果今天是开奖日 且 今天 > 最新开奖日期 → 今天这期还没开，推荐就是 nextPeriod
-  // 如果今天不是开奖日，或今天 <= 最新开奖日期 → 推荐就是 nextPeriod（下一个未开的）
-  // 如果今天是开奖日 且 今天 == 最新开奖日期 → 今天已开，推荐是 nextPeriod+1
-  if (latestDateStr && todayStr === latestDateStr) {
-    // 今天已经开奖了，推荐下下期
+  if (latestDate && todayStr === latestDate) {
+    const ys = parseInt(nextPeriod.slice(0, 2));
     const seq2 = parseInt(nextPeriod.slice(2)) + 1;
-    const ys2 = parseInt(nextPeriod.slice(0, 2));
-    if (seq2 > 999) {
-      return String(ys2 + 1).padStart(2, '0') + '001';
-    }
-    return String(ys2).padStart(2, '0') + String(seq2).padStart(3, '0');
+    return seq2 > 999 ? String(ys + 1).padStart(2, '0') + '001' : String(ys).padStart(2, '0') + String(seq2).padStart(3, '0');
   }
-
   return nextPeriod;
 }
 
-// ========== 初始化 ==========
 document.addEventListener('DOMContentLoaded', () => {
-  // 从 localStorage 恢复状态
   loadState();
-  // 恢复彩种按钮高亮
-  document.querySelectorAll('.lottery-type-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.type === currentLotteryType);
-  });
-  // 初始显示当前彩种已有数据（如果有）
+  applyTheme();
+  syncLotteryButtons();
+  syncViewButtons();
+  syncHistoryControls();
+  // 对已有策略数据填充 performance（从回测结果）
+  const initState = getState();
+  if (initState.atomicStrategies?.length > 0 && (!initState.masterRecommendations?.[0]?.performance)) {
+    rebuildMasterRecommendations(initState);
+    backfillStrategyPerformance(initState);
+  }
+  updatePageMeta();
   renderAll();
-  // 自动获取一次最新记录
-  refreshData();
+  refreshData().then(() => {
+    // 版本迁移 或 策略数据被清空（如被旧版迁移误删）→ 自动重新生成
+    const state = getState();
+    const needRegen = _pendingMigrationRegenerate || !state.atomicStrategies || state.atomicStrategies.length === 0;
+    if (needRegen) {
+      _pendingMigrationRegenerate = false;
+      console.log('[AutoRegen] 策略数据为空，自动重新生成推荐...');
+      generateNewRecommendation();
+    }
+  });
 });
 
-// ========== 切换彩种 ==========
-function selectLottery(type) {
-  if (isLoading) return;
-  
-  currentLotteryType = type;
-  
-  document.querySelectorAll('.lottery-type-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.type === type);
-  });
-  
-  // 不清空！只重新渲染现有状态
-  renderAll();
+function syncLotteryButtons() {
+  document.querySelectorAll('.lottery-switch-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.type === currentLotteryType));
 }
 
-// ========== 主刷新流程 ==========
+function syncViewButtons() {
+  document.querySelectorAll('.view-switch-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.view === currentView));
+  document.querySelectorAll('.content-panel').forEach(panel => panel.classList.toggle('active', panel.id === `view-${currentView}`));
+}
+
+function syncHistoryControls() {
+  document.querySelectorAll('.range-switch-btn').forEach(btn => btn.classList.toggle('active', Number(btn.dataset.range) === currentHistoryTrendRange));
+  document.querySelectorAll('.archive-switch-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.mode === currentHistoryArchiveMode));
+}
+
+function setHistoryTrendRange(range) {
+  currentHistoryTrendRange = 60;
+  syncHistoryControls();
+  renderHistoryDashboard(getState());
+  showToast('历史趋势固定展示最近 60 期');
+}
+
+function toggleHistoryReplay(period) {
+  const cards = Array.from(document.querySelectorAll('.history-accordion-card'));
+  cards.forEach(card => {
+    const isTarget = card.dataset.period === String(period);
+    card.classList.toggle('expanded', isTarget ? !card.classList.contains('expanded') : false);
+  });
+}
+
+function setHistoryArchiveMode(mode) {
+  currentHistoryArchiveMode = mode === 'table' ? 'table' : 'card';
+  syncHistoryControls();
+  renderHistory(getState().historyData);
+  showToast(currentHistoryArchiveMode === 'table' ? '已切换到表格视图' : '已切换到卡片视图');
+}
+
+function setHistoryStrategyFilter(strategyName) {
+  currentHistoryStrategyFilter = strategyName || 'all';
+  renderHistoryDashboard(getState());
+  showToast(currentHistoryStrategyFilter === 'all' ? '已切换为查看全部策略走势' : `已切换为仅查看：${currentHistoryStrategyFilter}`);
+}
+
+function updatePageMeta() {
+  const meta = lotteryMetaMap[currentLotteryType];
+  document.getElementById('currentLotteryName').textContent = meta.name;
+  document.getElementById('currentLotteryMeta').textContent = meta.short;
+  document.getElementById('heroTitle').textContent = meta.heroTitle;
+  document.getElementById('heroDesc').textContent = meta.heroDesc;
+  const heroDateDisplay = document.getElementById('heroDateDisplay');
+  const heroUpdateTime = document.getElementById('heroUpdateTime');
+  const heroRecordCount = document.getElementById('heroRecordCount');
+  if (heroDateDisplay) heroDateDisplay.textContent = meta.name;
+  if (heroUpdateTime) heroUpdateTime.textContent = document.getElementById('updateTime')?.textContent || '--';
+  if (heroRecordCount) heroRecordCount.textContent = document.getElementById('recordCount')?.textContent || '0 条';
+}
+
+function selectLottery(type) {
+  if (isLoading) return;
+  currentLotteryType = type;
+  syncLotteryButtons();
+  renderAll();
+  updatePageMeta();
+  // 切换彩种时，如果目标彩种没有策略数据，自动生成
+  const state = getState();
+  if (!state.atomicStrategies || state.atomicStrategies.length === 0) {
+    refreshData().then(() => generateNewRecommendation());
+  } else if (currentView === 'charts' && !state.statsData) {
+    loadStatsData();
+  }
+  saveState();
+}
+
+function switchView(viewName) {
+  currentView = viewName;
+  syncViewButtons();
+  if (viewName === 'charts' && !getState().statsData) loadStatsData();
+  renderAll();
+  saveState();
+}
+
 async function refreshData() {
   if (isLoading) return;
   isLoading = true;
   showLoading(true);
-  
   const state = getState();
-  
   try {
-    // 抓取更多历史：从500.com抓120期
     const newData = await fetchFrom500Com(currentLotteryType, 120);
-    
     if (newData && newData.length > 0) {
-      // 增量合并：只追加不重复的新期号
-      const existingPeriods = new Set(state.historyData.map(item => item.period));
+      const existing = new Set(state.historyData.map(x => x.period));
       let added = 0;
-      newData.forEach(item => {
-        if (!existingPeriods.has(item.period)) {
-          state.historyData.push(item);
-          added++;
-        }
-      });
+      newData.forEach(item => { if (!existing.has(item.period)) { state.historyData.push(item); added++; } });
       state.historyData.sort((a, b) => b.period.localeCompare(a.period));
-      state.historyData = state.historyData.slice(0, 200); // 最多保留200期
+      state.historyData = state.historyData.slice(0, 200);
       document.getElementById('dataSource').textContent = `🌐 500彩票网实时数据（+${added}条）`;
-      // 同步导出数据供 Python ML 训练脚本读取
-      try {
-        await window.electronAPI.exportHistoryData(currentLotteryType, state.historyData);
-      } catch(e) { console.log('导出数据失败:', e); }
+      state.statsData = null;
     } else {
-      if (state.historyData.length === 0) {
-        state.historyData = getBuiltInData(currentLotteryType);
-      }
+      if (state.historyData.length === 0) state.historyData = getBuiltInData(currentLotteryType);
       document.getElementById('dataSource').textContent = '📦 内置历史数据';
     }
-    
+
     document.getElementById('updateTime').textContent = new Date().toLocaleTimeString('zh-CN');
     document.getElementById('recordCount').textContent = `${state.historyData.length} 条`;
-    
+    const heroUpdateTime = document.getElementById('heroUpdateTime');
+    const heroRecordCount = document.getElementById('heroRecordCount');
+    if (heroUpdateTime) heroUpdateTime.textContent = document.getElementById('updateTime').textContent;
+    if (heroRecordCount) heroRecordCount.textContent = document.getElementById('recordCount').textContent;
+
+    if (!state.statsData) await loadStatsData();
     renderHistory(state.historyData);
-    
-    // ===== 处理推荐状态 =====
+
     const latestRecord = state.historyData[0];
-    
     if (state.currentPeriod === null) {
-      // 首次生成推荐（绑定下一期）
       await generateNewRecommendation();
+    } else if (latestRecord && latestRecord.period.localeCompare(state.currentPeriod) >= 0) {
+      checkResults(state);
+      await adoptNewRecommendation();
     } else {
-      // 已有推荐，检查最新一期是否已超过推荐期
-      if (latestRecord && latestRecord.period.localeCompare(state.currentPeriod) > 0) {
-        // 推荐期已被开奖超越：先显示结果，再提示生成新一期
-        checkResults(state);
-        renderExpiredPrompt(state, latestRecord);
-      } else {
-        // 推荐期 == 最新期（还没开），正常显示
-        renderRecommendationPanel(state);
-      }
+      renderRecommendationPanel(state);
     }
-    
-    renderHistoryRecPanel(state);
-    
+
+    renderHistoryDashboard(state);
+    renderPrizeRules();
   } catch (error) {
     console.error('获取数据失败:', error);
-    if (state.historyData.length === 0) {
-      state.historyData = getBuiltInData(currentLotteryType);
-      renderHistory(state.historyData);
-    }
+    if (state.historyData.length === 0) state.historyData = getBuiltInData(currentLotteryType);
     checkResults(state);
+    if (!state.statsData) await loadStatsData();
     renderRecommendationPanel(state);
+    renderHistory(state.historyData);
+    renderHistoryDashboard(state);
+    renderPrizeRules();
   } finally {
     isLoading = false;
     showLoading(false);
@@ -220,88 +367,70 @@ async function refreshData() {
   }
 }
 
-// ========== 抓取500彩票网数据 ==========
-async function fetchFrom500Com(type, count = 120) {
-  const baseUrl = type === 'ssq'
-    ? 'https://datachart.500.com/ssq/history/newinc/history.php'
-    : 'https://datachart.500.com/dlt/history/newinc/history.php';
-  
+async function fetchFrom500Com(type) {
+  const baseUrl = type === 'ssq' ? 'https://datachart.500.com/ssq/history/newinc/history.php' : 'https://datachart.500.com/dlt/history/newinc/history.php';
   try {
-    // 请求更多期数（用end参数控制）
     const response = await fetch(`${baseUrl}?start=25001&end=26100`);
     const html = await response.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
+    const doc = new DOMParser().parseFromString(html, 'text/html');
     const tbody = doc.getElementById('tdata');
     if (!tbody) return null;
-    
-    const rows = tbody.querySelectorAll('tr');
     const records = [];
-    
-    rows.forEach(row => {
+    tbody.querySelectorAll('tr').forEach(row => {
       const cells = row.querySelectorAll('td');
       if (cells.length < 8) return;
-      
       const period = cells[0].textContent.trim();
-      if (!period || !/^\d{5,}$/.test(period)) return;
-      
+      if (!/^\d{5,}$/.test(period)) return;
       if (type === 'ssq') {
-        const redNumbers = [];
-        for (let i = 1; i <= 6; i++) {
-          const num = parseInt(cells[i]?.textContent?.trim() || '0');
-          if (num >= 1 && num <= 33) redNumbers.push(num);
-        }
+        const redNumbers = Array.from({ length: 6 }, (_, i) => parseInt(cells[i + 1]?.textContent?.trim() || '0')).filter(n => n >= 1 && n <= 33);
         const blueNumber = parseInt(cells[7]?.textContent?.trim() || '0');
         const dateStr = cells[cells.length - 1]?.textContent?.trim() || '';
-        
-        if (redNumbers.length === 6 && blueNumber >= 1 && blueNumber <= 16) {
-          records.push({ period, date: dateStr, redNumbers, blueNumber });
-        }
+        if (redNumbers.length === 6 && blueNumber >= 1 && blueNumber <= 16) records.push({ period, date: dateStr, redNumbers, blueNumber });
       } else {
-        const frontNumbers = [];
-        for (let i = 1; i <= 5; i++) {
-          const num = parseInt(cells[i]?.textContent?.trim() || '0');
-          if (num >= 1 && num <= 35) frontNumbers.push(num);
-        }
-        const backNumbers = [];
-        for (let i = 6; i <= 7; i++) {
-          const num = parseInt(cells[i]?.textContent?.trim() || '0');
-          if (num >= 1 && num <= 12) backNumbers.push(num);
-        }
+        const frontNumbers = Array.from({ length: 5 }, (_, i) => parseInt(cells[i + 1]?.textContent?.trim() || '0')).filter(n => n >= 1 && n <= 35);
+        const backNumbers = [6, 7].map(i => parseInt(cells[i]?.textContent?.trim() || '0')).filter(n => n >= 1 && n <= 12);
         const dateStr = cells[cells.length - 1]?.textContent?.trim() || '';
-        
-        if (frontNumbers.length === 5 && backNumbers.length === 2) {
-          records.push({ period, date: dateStr, frontNumbers, backNumbers });
-        }
+        if (frontNumbers.length === 5 && backNumbers.length === 2) records.push({ period, date: dateStr, frontNumbers, backNumbers });
       }
     });
-    
-    console.log(`[${type}] 抓取到 ${records.length} 条记录`);
     return records;
-    
   } catch (error) {
     console.error(`[${type}] 抓取失败:`, error);
     return null;
   }
 }
 
-// ========== 生成新推荐（绑定下一期，未开奖的那个） ==========
 async function generateNewRecommendation() {
   const state = getState();
   if (state.historyData.length === 0) return;
-  
   try {
     const result = await window.electronAPI.getRecommendation(currentLotteryType, state.historyData);
-    
     if (result.success && result.data) {
-      // 推荐绑定"下一期"，即已开奖最新期的下一个（传入最新期日期用于判断今天是否已开）
       const latest = state.historyData[0];
       state.currentPeriod = getNextPeriod(latest.period, currentLotteryType, latest.date);
       state.allSets = result.data;
+      state.atomicStrategies = result.meta?.atomicStrategies || [];
       state.activeSetIndex = 0;
-      state.confirmedRecommendation = null; // 生成新推荐时清空确认
+      state.activeMasterIndex = 0;
+      state.confirmedRecommendation = null;
+      rebuildMasterRecommendations(state);
+      // 自动回测：填充 performance 数据，用于排序
+      backfillStrategyPerformance(state);
+      const topStrategy = state.masterRecommendations[0];
+      if (state.currentPeriod && topStrategy?.set) {
+        state.recommendationHistory = state.recommendationHistory.filter(item => item.period !== state.currentPeriod);
+        state.recommendationHistory.unshift({
+          period: state.currentPeriod,
+          setIndex: topStrategy.index,
+          label: topStrategy.name,
+          set: topStrategy.set,
+          savedAt: new Date().toLocaleString('zh-CN'),
+          result: null,
+          auto: true
+        });
+      }
       renderRecommendationPanel(state);
-      renderHistoryRecPanel(state);
+      renderHistoryDashboard(state);
       saveState();
     }
   } catch (error) {
@@ -309,627 +438,917 @@ async function generateNewRecommendation() {
   }
 }
 
-// ========== 换一组：重新生成5组全新推荐 ==========
+/**
+ * 用 buildStrategyBacktest 回测结果填充 masterRecommendations 的 performance 字段
+ * 同时写回 state.allSets，这样 renderRecommendationPanel 内的 rebuildMasterRecommendations 也能读到
+ */
+function backfillStrategyPerformance(state) {
+  const backtests = buildStrategyBacktest(state);
+  if (backtests.length === 0) {
+    console.log('[Backfill] 回测结果为空，跳过');
+    return;
+  }
+
+  const strategyHits = {};
+  for (const period of backtests) {
+    for (const s of period.strategies) {
+      if (!strategyHits[s.strategy]) strategyHits[s.strategy] = [];
+      strategyHits[s.strategy].push(s.result.totalHit);
+    }
+  }
+  console.log('[Backfill] 回测聚合:', Object.entries(strategyHits).map(([k, v]) => `${k}: avg=${(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1)} best=${Math.max(...v)} n=${v.length}`).join(' | '));
+
+  const allMeta = getStrategyMeta();
+
+  // 填充 masterRecommendations
+  state.masterRecommendations.forEach(item => {
+    const hits = strategyHits[item.name] || strategyHits[item.masterName] || strategyHits[item.atomicName];
+    if (hits && hits.length > 0) {
+      const avg = parseFloat((hits.reduce((a, b) => a + b, 0) / hits.length).toFixed(1));
+      const best = Math.max(...hits);
+      const perf = { avgHit: avg, bestHit: best, totalPeriods: hits.length };
+      item.performance = perf;
+      console.log(`[Backfill] ${item.name} → avg=${avg} best=${best}`);
+      // 同步写回 allSets：下次 rebuildMasterRecommendations 时也能读到
+      if (state.allSets) {
+        state.allSets.forEach(s => {
+          const meta = allMeta.find(m => m.key === (s.masterKey || s.atomicKey));
+          const sname = meta?.name || s.masterName || s.atomicName;
+          if (sname === item.name) s.performance = perf;
+        });
+      }
+    } else {
+      console.log(`[Backfill] ${item.name} → 无匹配回测数据`);
+    }
+  });
+
+  sortMasterRecommendations(state);
+  console.log('[Backfill] 排序后顺序:', state.masterRecommendations.map(m => `${m.name}(avg=${m.performance?.avgHit ?? 'null'})`).join(' > '));
+}
+
 async function regenerateAllGroups() {
   const state = getState();
   if (state.historyData.length === 0) return;
-  // 显示加载状态
-  document.getElementById('recommendationContainer').innerHTML = `
-    <div class="empty-state"><span class="empty-icon">⚙️</span><p>正在生成新推荐...</p></div>
-  `;
+  document.getElementById('recommendationContainer').innerHTML = '<div class="empty-state"><div class="empty-icon">⚙️</div><p>正在生成新推荐...</p></div>';
   try {
     const result = await window.electronAPI.getRecommendation(currentLotteryType, state.historyData);
     if (result.success && result.data.length > 0) {
-      const newState = getState();
-      newState.allSets = result.data;
-      newState.activeSetIndex = 0;
-      renderRecommendationPanel(newState);
-      showToast(`🎲 已生成新5组推荐！`, 'success');
+      state.allSets = result.data;
+      state.atomicStrategies = result.meta?.atomicStrategies || [];
+      state.activeSetIndex = 0;
+      state.activeMasterIndex = 0;
+      state.confirmedRecommendation = null;
+      rebuildMasterRecommendations(state);
+      backfillStrategyPerformance(state);
+      renderRecommendationPanel(state);
+      renderHistoryDashboard(state);
+      saveState();
+      showToast(`📊 已更新 ${state.masterRecommendations.length} 个策略展示！`);
     }
   } catch (error) {
     console.error('重新生成失败:', error);
-    showToast('重新生成失败', 'error');
+    showToast('重新生成失败');
   }
 }
 
-// ========== 切换到指定组 ==========
 function jumpToSet(index) {
   const state = getState();
-  if (index >= 0 && index < state.allSets.length) {
+  rebuildMasterRecommendations(state);
+  if (index >= 0 && index < state.masterRecommendations.length) {
+    state.activeMasterIndex = index;
     state.activeSetIndex = index;
     renderRecommendationPanel(state);
+    saveState();
   }
 }
 
-// ========== 确认使用（增量追加，同一期可保存多组） ==========
-function confirmSet() {
-  const state = getState();
-  if (!state.currentPeriod || state.allSets.length === 0) return;
-  
-  const set = state.allSets[state.activeSetIndex];
-  
-  // 增量追加，不做去重（同一期可以保存多组）
-  state.recommendationHistory.unshift({
-    period: state.currentPeriod,
-    setIndex: state.activeSetIndex,
-    set: set,
-    savedAt: new Date().toLocaleString('zh-CN'),
-    result: null
-  });
-  
-  renderRecommendationPanel(state);
-  renderHistoryRecPanel(state);
-  showToast(`✅ 第 ${state.currentPeriod} 期第 ${state.activeSetIndex + 1} 组已保存！`);
-  saveState();
-}
+async function adoptNewRecommendation() { if (getState().historyData.length > 0) await generateNewRecommendation(); }
 
-// ========== 生成新一期推荐（主动升级） ==========
-async function adoptNewRecommendation() {
-  const state = getState();
-  if (state.historyData.length === 0) return;
-  
-  // 当前推荐（即使未确认）存入往期
-  if (state.currentPeriod && state.allSets.length > 0) {
-    const exists = state.recommendationHistory.some(h => 
-      h.period === state.currentPeriod && h.setIndex === state.activeSetIndex
-    );
-    if (!exists) {
-      state.recommendationHistory.unshift({
-        period: state.currentPeriod,
-        setIndex: state.activeSetIndex,
-        set: state.allSets[state.activeSetIndex],
-        confirmed: false,
-        result: null
-      });
-    }
-  }
-  
-  await generateNewRecommendation();
-}
-
-// ========== 检查并填入中奖结果（更新同一期所有保存的记录） ==========
 function checkResults(state) {
-  // 找到所有已开奖且有待开奖结果的记录
-  const periodsToCheck = [...new Set(
-    state.recommendationHistory
-      .filter(h => !h.result)
-      .map(h => h.period)
-  )];
-  
+  const periodsToCheck = [...new Set(state.recommendationHistory.filter(h => !h.result).map(h => h.period))];
   for (const period of periodsToCheck) {
     const record = state.historyData.find(r => r.period === period);
     if (!record) continue;
-    
-    // 更新该期所有保存的记录
     for (const item of state.recommendationHistory) {
       if (item.period !== period || item.result) continue;
       const set = item.set;
-      
       if (currentLotteryType === 'ssq') {
         const redHit = set.redBalls.filter(n => record.redNumbers.includes(n)).length;
         const blueHit = set.blueBall === record.blueNumber ? 1 : 0;
-        item.result = { redHit, blueHit };
+        item.result = { redHit, blueHit, totalHit: redHit + blueHit };
       } else {
         const frontHit = set.frontBalls.filter(n => record.frontNumbers.includes(n)).length;
         const backHit = set.backBalls.filter(n => record.backNumbers.includes(n)).length;
-        item.result = { frontHit, backHit };
+        item.result = { frontHit, backHit, totalHit: frontHit + backHit };
       }
     }
   }
-  
-  if (periodsToCheck.length > 0) renderHistoryRecPanel(state);
 }
 
-// ========== 渲染全部（当前彩种） ==========
 function renderAll() {
   const state = getState();
-  
-  document.getElementById('updateTime').textContent = state.historyData.length > 0
-    ? (document.getElementById('updateTime').textContent || '--')
-    : '--';
   document.getElementById('recordCount').textContent = `${state.historyData.length} 条`;
-  
+  renderPrizeRules();
   renderHistory(state.historyData);
   renderRecommendationPanel(state);
-  renderHistoryRecPanel(state);
+  renderHistoryDashboard(state);
+  if (state.statsData) renderStatsPanel(state.statsData);
 }
 
-// ========== 渲染推荐面板 ==========
+function getForecastMetrics(set, type) {
+  const main = type === 'ssq' ? [...(set.redBalls || [])] : [...(set.frontBalls || [])];
+  const back = type === 'ssq' ? [set.blueBall] : [...(set.backBalls || [])];
+  const sorted = [...main].sort((a, b) => a - b);
+  const odd = main.filter(n => n % 2 === 1).length;
+  const even = main.length - odd;
+  const sum = main.reduce((a, b) => a + b, 0);
+  const span = sorted.length ? sorted[sorted.length - 1] - sorted[0] : 0;
+  const consecutive = sorted.slice(1).filter((n, i) => n - sorted[i] === 1).length;
+  const zone = type === 'ssq'
+    ? [main.filter(n => n <= 11).length, main.filter(n => n >= 12 && n <= 22).length, main.filter(n => n >= 23).length]
+    : [main.filter(n => n <= 12).length, main.filter(n => n >= 13 && n <= 24).length, main.filter(n => n >= 25).length];
+  return { main, back, sorted, odd, even, sum, span, consecutive, zone };
+}
+
+function renderForecastReference(latestRecord) {
+  if (!latestRecord) return '<div class="reason-grid"><div class="reason-chip">暂无最新开奖参考</div></div>';
+  if (currentLotteryType === 'ssq') {
+    return `<div class="review-card"><div class="review-card-head"><span>上期开奖参考</span><span class="review-status done">第 ${latestRecord.period} 期</span></div><div class="review-ball-row">${latestRecord.redNumbers.map(n => `<span class="ball-sm red">${String(n).padStart(2, '0')}</span>`).join('')}<span class="sep">+</span><span class="ball-sm blue">${String(latestRecord.blueNumber).padStart(2, '0')}</span></div><div class="review-result">开奖日期：${latestRecord.date || '--'}</div></div>`;
+  }
+  return `<div class="review-card"><div class="review-card-head"><span>上期开奖参考</span><span class="review-status done">第 ${latestRecord.period} 期</span></div><div class="review-ball-row">${latestRecord.frontNumbers.map(n => `<span class="ball-sm red">${String(n).padStart(2, '0')}</span>`).join('')}<span class="sep">+</span>${latestRecord.backNumbers.map(n => `<span class="ball-sm blue">${String(n).padStart(2, '0')}</span>`).join('')}</div><div class="review-result">开奖日期：${latestRecord.date || '--'}</div></div>`;
+}
+
 function renderRecommendationPanel(state) {
   const container = document.getElementById('recommendationContainer');
-  
-  if (!state.currentPeriod || state.allSets.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <span class="empty-icon">💡</span>
-        <p>点击"获取最新记录"按钮<br>获取分析数据后显示推荐号码</p>
-      </div>
-    `;
+  rebuildMasterRecommendations(state);
+  if (!state.currentPeriod || state.masterRecommendations.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">💡</div><p>点击“刷新数据并生成推荐”查看当前彩种的最新预测</p></div>';
     return;
   }
-  
-  const set = state.allSets[state.activeSetIndex];
-  const isConfirmed = state.confirmedRecommendation &&
-                      state.confirmedRecommendation.period === state.currentPeriod &&
-                      state.confirmedRecommendation.setIndex === state.activeSetIndex;
+
   const latestRecord = state.historyData[0];
-  // 推荐期已开奖 → 有result数据；推荐期还未开 → 无result
-  const hasResult = !!(state.confirmedRecommendation?.result);
-  const isLatestPeriod = latestRecord && state.currentPeriod === latestRecord.period;
-  const resultInfo = state.confirmedRecommendation?.result;
-  
-  // 渲染球（不可点击，显示用）
-  const renderBalls = (rec, showHit = false, record = null) => {
-    if (currentLotteryType === 'ssq') {
-      const redClass = (n) => {
-        let cls = 'ball red';
-        if (showHit && record && record.redNumbers.includes(n)) cls += ' hit-ball';
-        return cls;
-      };
-      const blueClass = () => {
-        let cls = 'ball blue';
-        if (showHit && record && record.blueNumber === rec.blueBall) cls += ' hit-ball';
-        return cls;
-      };
-      return `
-        <div class="rec-balls-row">
-          <span class="zone-label">红球</span>
-          <div class="balls">${rec.redBalls.map(n => `<span class="${redClass(n)}">${String(n).padStart(2,'0')}</span>`).join('')}</div>
-        </div>
-        <div class="rec-balls-row">
-          <span class="zone-label">蓝球</span>
-          <div class="balls">${record ? `<span class="${blueClass()}">${String(rec.blueBall).padStart(2,'0')}</span>` : `<span class="ball blue">${String(rec.blueBall).padStart(2,'0')}</span>`}</div>
-        </div>
-      `;
-    } else {
-      const frontClass = (n) => {
-        let cls = 'ball red';
-        if (showHit && record && record.frontNumbers.includes(n)) cls += ' hit-ball';
-        return cls;
-      };
-      const backClass = (n) => {
-        let cls = 'ball blue';
-        if (showHit && record && record.backNumbers.includes(n)) cls += ' hit-ball';
-        return cls;
-      };
-      return `
-        <div class="rec-balls-row">
-          <span class="zone-label">前区</span>
-          <div class="balls">${rec.frontBalls.map(n => `<span class="${frontClass(n)}">${String(n).padStart(2,'0')}</span>`).join('')}</div>
-        </div>
-        <div class="rec-balls-row">
-          <span class="zone-label">后区</span>
-          <div class="balls">${rec.backBalls.map(n => `<span class="${backClass(n)}">${String(n).padStart(2,'0')}</span>`).join('')}</div>
-        </div>
-      `;
-    }
-  };
-  
-  // 结果信息
-  let resultHTML = '';
-  if (resultInfo) {
-    // 推荐期已开奖，显示结果
-    if (currentLotteryType === 'ssq') {
-      resultHTML = `
-        <div class="result-bar result-hit">
-          <div class="result-info">
-            <span class="result-label">第 ${state.currentPeriod} 期已开奖</span>
-            <span class="result-hits">红球命中 <b>${resultInfo.redHit}/6</b>${resultInfo.blueHit ? '，蓝球 <b class="c-green">✅</b>' : '，蓝球 <b class="c-red">❌</b>'}</span>
-          </div>
-        </div>
-      `;
-    } else {
-      resultHTML = `
-        <div class="result-bar result-hit">
-          <div class="result-info">
-            <span class="result-label">第 ${state.currentPeriod} 期已开奖</span>
-            <span class="result-hits">前区 <b>${resultInfo.frontHit}/5</b>，后区 <b>${resultInfo.backHit}/2</b></span>
-          </div>
-        </div>
-      `;
-    }
-  } else {
-    // 推荐期还未开，显示待开奖
-    resultHTML = `
-      <div class="result-bar result-pending">
-        <div class="result-info">
-          <span class="result-label">⏳ 第 ${state.currentPeriod} 期待开奖</span>
-          <span class="result-hint">开奖后自动显示结果</span>
-        </div>
-      </div>
-    `;
-  }
-  
-  // 原因列表
-  const reasons = set.reason || [];
-  const reasonHTML = reasons.length > 0 ? `
-    <div class="rec-reasons">
-      ${reasons.map(r => `<span class="reason-tag">${r}</span>`).join('')}
-    </div>
-  ` : '';
-  
-  // 组别选择器（5组卡片）
-  const setsHTML = state.allSets.map((s, i) => {
-    const isActive = i === state.activeSetIndex;
-    const isConf = isConfirmed && i === state.activeSetIndex;
-    
-    if (currentLotteryType === 'ssq') {
-      return `
-        <div class="set-card ${isActive ? 'active' : ''}" onclick="jumpToSet(${i})">
-          <div class="set-card-num">${i + 1}</div>
-          <div class="set-card-balls">
-            ${s.redBalls.map(n => `<span class="ball-sm red">${String(n).padStart(2,'0')}</span>`).join('')}
-            <span class="ball-sm sep">+</span>
-            <span class="ball-sm blue">${String(s.blueBall).padStart(2,'0')}</span>
-          </div>
-          ${isConf ? '<div class="set-confirmed">✅已确认</div>' : ''}
-        </div>
-      `;
-    } else {
-      return `
-        <div class="set-card ${isActive ? 'active' : ''}" onclick="jumpToSet(${i})">
-          <div class="set-card-num">${i + 1}</div>
-          <div class="set-card-balls">
-            ${s.frontBalls.map(n => `<span class="ball-sm red">${String(n).padStart(2,'0')}</span>`).join('')}
-            <span class="ball-sm sep">+</span>
-            ${s.backBalls.map(n => `<span class="ball-sm blue">${String(n).padStart(2,'0')}</span>`).join('')}
-          </div>
-          ${isConf ? '<div class="set-confirmed">✅已确认</div>' : ''}
-        </div>
-      `;
-    }
-  }).join('');
-  
-  // 选中组的详细理由
-  const activeReasons = state.allSets[state.activeSetIndex]?.reason || [];
-  const activeReasonHTML = activeReasons.length > 0 ? `
-    <div class="rec-reasons-detail">
-      ${activeReasons.map(r => `<div class="reason-item">💡 ${r}</div>`).join('')}
-    </div>
-  ` : '';
-  
-  // 底部按钮：换一组（重新生成）+ 导航
-  container.innerHTML = `
-    <div class="rec-top">
-      <div class="rec-period-badge">📌 第 ${state.currentPeriod} 期</div>
-      <div class="rec-set-pager">
-        <button class="btn-nav ${state.activeSetIndex === 0 ? 'disabled' : ''}" onclick="jumpToSet(${state.activeSetIndex - 1})">◀</button>
-        <span class="pager-label">第 <b>${state.activeSetIndex + 1}</b> / ${state.allSets.length} 组</span>
-        <button class="btn-nav ${state.activeSetIndex === state.allSets.length - 1 ? 'disabled' : ''}" onclick="jumpToSet(${state.activeSetIndex + 1})">▶</button>
-      </div>
-    </div>
-    
-    ${resultHTML}
-    
-    <div class="rec-ball-display">
-      ${renderBalls(state.allSets[state.activeSetIndex], !!resultInfo, resultInfo ? latestRecord : null)}
-    </div>
-    
-    ${activeReasonHTML}
-    
-    <div class="rec-set-selector">
-      ${setsHTML}
-    </div>
-    
-    <div class="rec-actions">
-      ${!resultInfo ? `<button class="btn-confirm" onclick="confirmSet()">
-        ✅ 确认使用（第${state.currentPeriod}期）
-      </button>` : ''}
-      <button class="btn-cycle" onclick="regenerateAllGroups()">
-        🎲 换一组（重新生成5组新推荐）
-      </button>
-    </div>
-  `;
-}
-
-// ========== 跳转到指定组 ==========
-function jumpToSet(index) {
-  const state = getState();
-  if (index >= 0 && index < state.allSets.length) {
-    state.activeSetIndex = index;
-    renderRecommendationPanel(state);
-  }
-}
-
-// ========== 上一页组 ==========
-function prevSet() {
-  const state = getState();
-  if (state.activeSetIndex > 0) {
-    state.activeSetIndex--;
-    renderRecommendationPanel(state);
-  }
-}
-
-// ========== 渲染过期提示 ==========
-function renderExpiredPrompt(state, latestRecord) {
-  const container = document.getElementById('recommendationContainer');
-  container.innerHTML = `
-    <div class="expired-panel">
-      <div class="expired-icon">⏰</div>
-      <div class="expired-title">第 ${state.currentPeriod} 期已开奖</div>
-      <div class="expired-desc">最新数据已更新至第 ${latestRecord.period} 期</div>
-      <div class="expired-btns">
-        <button class="btn-expired-secondary" onclick="renderRecommendationPanel(statePool['${currentLotteryType}'])">
-          📊 查看第 ${state.currentPeriod} 期结果
-        </button>
-        <button class="btn-expired-primary" onclick="adoptNewRecommendation()">
-          ➕ 生成第 ${latestRecord.period} 期推荐
-        </button>
-      </div>
-    </div>
-  `;
-}
-
-// ========== 渲染往期推荐（带原因） ==========
-// ========== 渲染往期推荐（按期号分组，增量追加） ==========
-function renderHistoryRecPanel(state) {
-  const container = document.getElementById('historyRecContent');
-  
-  if (state.recommendationHistory.length === 0) {
-    container.innerHTML = `<div class="history-rec-empty">暂无保存的推荐<br><span>确认保存后可查看战绩</span></div>`;
+  const activeMaster = getActiveMasterRecommendation(state);
+  if (!activeMaster?.set) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">🧩</div><p>推荐结构正在初始化，请重新生成一次推荐</p></div>';
     return;
   }
-  
-  // 按期号分组
-  const grouped = {};
-  for (const item of state.recommendationHistory) {
-    if (!grouped[item.period]) grouped[item.period] = [];
-    grouped[item.period].push(item);
-  }
-  
-  const renderBalls = (item) => {
-    if (currentLotteryType === 'ssq') {
-      return `
-        <div class="hri-balls">
-          ${item.set.redBalls.map(n => `<span class="ball-sm red">${String(n).padStart(2,'0')}</span>`).join('')}
-          <span class="ball-sm sep">+</span>
-          <span class="ball-sm blue">${String(item.set.blueBall).padStart(2,'0')}</span>
-        </div>
-      `;
-    } else {
-      return `
-        <div class="hri-balls">
-          ${item.set.frontBalls.map(n => `<span class="ball-sm red">${String(n).padStart(2,'0')}</span>`).join('')}
-          <span class="ball-sm sep">+</span>
-          ${item.set.backBalls.map(n => `<span class="ball-sm blue">${String(n).padStart(2,'0')}</span>`).join('')}
-        </div>
-      `;
-    }
-  };
-  
-  const renderResult = (item) => {
-    if (!item.result) return `<div class="hri-result hri-pending">⏳ 待开奖</div>`;
-    
-    if (currentLotteryType === 'ssq') {
-      const r = item.result;
-      const badge = r.redHit >= 4 ? 'great' : r.redHit >= 2 ? 'ok' : 'poor';
-      return `
-        <div class="hri-result hri-${badge}">
-          红球命中 <b>${r.redHit}/6</b>${r.blueHit ? '，蓝球 <b class="c-green">✅</b>' : '，蓝球 <b class="c-red">❌</b>'}
-        </div>
-      `;
-    } else {
-      const r = item.result;
-      return `<div class="hri-result">前区 <b>${r.frontHit}/5</b>，后区 <b>${r.backHit}/2</b></div>`;
-    }
-  };
-  
-  const periods = Object.keys(grouped).sort((a, b) => b - a); // 倒序，最新期在上
-  
-  container.innerHTML = periods.map(period => {
-    const items = grouped[period];
-    const firstItem = items[0];
-    const hasResult = items.some(i => i.result);
-    const periodStatus = hasResult ? '已开奖' : '待开奖';
-    
+
+  const strategyCards = state.masterRecommendations.map((item, index) => {
+    const set = item.set;
+    const metrics = getForecastMetrics(set, currentLotteryType);
+    const mainBallsHtml = currentLotteryType === 'ssq'
+      ? `<div class="balls-block"><div class="balls-label">红球</div><div class="balls">${set.redBalls.map(n => `<span class="ball red">${String(n).padStart(2, '0')}</span>`).join('')}</div></div><div class="balls-block"><div class="balls-label">蓝球</div><div class="balls"><span class="ball blue">${String(set.blueBall).padStart(2, '0')}</span></div></div>`
+      : `<div class="balls-block"><div class="balls-label">前区</div><div class="balls">${set.frontBalls.map(n => `<span class="ball red">${String(n).padStart(2, '0')}</span>`).join('')}</div></div><div class="balls-block"><div class="balls-label">后区</div><div class="balls">${set.backBalls.map(n => `<span class="ball blue">${String(n).padStart(2, '0')}</span>`).join('')}</div></div>`;
+    const perfText = item.performance ? `平均命中 ${item.performance.avgHit} · 最佳 ${item.performance.bestHit}` : '历史表现待统计';
+    const reasonText = Array.isArray(item.reason) && item.reason.length ? item.reason.slice(0, 3).map(r => `<div class="reason-chip">${r}</div>`).join('') : '<div class="reason-chip">暂无策略说明</div>';
+    const statsHtml = [
+      ['主区和值', metrics.sum],
+      ['奇偶比例', `${metrics.odd}:${metrics.even}`],
+      ['跨度', metrics.span],
+      ['连号数', metrics.consecutive]
+    ].map(([label, value]) => `<div class="pill-stat"><span>${label}</span><strong>${value}</strong></div>`).join('');
     return `
-      <div class="hri-period-group">
-        <div class="hri-period-header">
-          <span class="hri-period-label">第 ${period} 期</span>
-          <span class="hri-period-status ${hasResult ? 'status-done' : 'status-pending'}">${periodStatus}</span>
-          <span class="hri-period-count">共 ${items.length} 组</span>
-        </div>
-        ${items.map(item => `
-          <div class="hri-item-row">
-            <div class="hri-item-left">
-              <div class="hri-set-tag">第 ${item.setIndex + 1} 组</div>
-              ${renderBalls(item)}
-            </div>
-            <div class="hri-item-right">
-              ${renderResult(item)}
-              <div class="hri-reason">策略：${(item.set?.reason || [])[0] || '—'}</div>
-            </div>
+      <div class="strategy-rank-card">
+        <div class="strategy-rank-head">
+          <div class="strategy-rank-no">${index + 1}</div>
+          <div class="strategy-rank-meta">
+            <div class="forecast-label">历史成绩排名 #${index + 1}</div>
+            <h4>${item.name}</h4>
+            <div class="forecast-meta">${item.badge} · ${perfText}</div>
           </div>
-        `).join('')}
-      </div>
-    `;
+        </div>
+        <div class="forecast-balls strategy-rank-balls">${mainBallsHtml}</div>
+        <div class="pill-stat-grid compact">${statsHtml}</div>
+        <div class="reason-grid compact">${reasonText}</div>
+      </div>`;
   }).join('');
+
+  container.innerHTML = `
+    <div class="result-bar pending"><div><div class="result-title">第 ${state.currentPeriod} 期</div><div class="result-subtitle">固定策略按历史成绩降序排列展示</div></div><span class="strategy-badge normal">📊 排名策略榜</span></div>
+    <div class="strategy-rank-grid">${strategyCards}</div>`;
 }
 
-// ========== 渲染历史开奖记录 ==========
+async function loadStatsData() {
+  const state = getState();
+  const fallback = buildSimpleStatsFromHistory(state.historyData, currentLotteryType);
+  state.statsData = fallback;
+  renderStatsPanel(fallback);
+}
+
+function buildSimpleStatsFromHistory(historyData, type) {
+  const recent = historyData.slice(0, 30);
+  const mainMax = type === 'ssq' ? 33 : 35;
+  const backMax = type === 'ssq' ? 16 : 12;
+  const freq = {}, backFreq = {}, omission = {}, zoneStats = [0, 0, 0], oddEvenMap = {};
+  for (let i = 1; i <= mainMax; i++) { freq[i] = 0; omission[i] = recent.length; }
+  for (let i = 1; i <= backMax; i++) backFreq[i] = 0;
+
+  recent.forEach((item, idx) => {
+    const main = type === 'ssq' ? item.redNumbers : item.frontNumbers;
+    const back = type === 'ssq' ? [item.blueNumber] : item.backNumbers;
+    let odd = 0;
+    main.forEach(n => {
+      freq[n] = (freq[n] || 0) + 1;
+      if (omission[n] === recent.length) omission[n] = idx;
+      if (n % 2 === 1) odd++;
+      if (type === 'ssq') {
+        if (n <= 11) zoneStats[0]++; else if (n <= 22) zoneStats[1]++; else zoneStats[2]++;
+      } else {
+        if (n <= 12) zoneStats[0]++; else if (n <= 24) zoneStats[1]++; else zoneStats[2]++;
+      }
+    });
+    const key = `${odd}:${main.length - odd}`;
+    oddEvenMap[key] = (oddEvenMap[key] || 0) + 1;
+    back.forEach(n => backFreq[n] = (backFreq[n] || 0) + 1);
+  });
+
+  const hot = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const cold = Object.entries(omission).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const backHot = Object.entries(backFreq).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const oddEven = Object.entries(oddEvenMap).sort((a, b) => b[1] - a[1]);
+  const sumSeries = recent.map(item => {
+    const nums = type === 'ssq' ? item.redNumbers : item.frontNumbers;
+    return { period: item.period, sum: nums.reduce((a, b) => a + b, 0) };
+  }).reverse();
+  const avgSum = sumSeries.length ? (sumSeries.reduce((a, b) => a + b.sum, 0) / sumSeries.length).toFixed(1) : '--';
+  return { hot, cold, backHot, oddEven, sumSeries, zoneStats, total: historyData.length, avgSum, sample: recent.length };
+}
+
+function renderStatsPanel(stats) {
+  const container = document.getElementById('statsContainer');
+  const maxHot = Math.max(...(stats.hot || []).map(x => Number(x[1] || 0)), 1);
+  const maxBack = Math.max(...(stats.backHot || []).map(x => Number(x[1] || 0)), 1);
+  const maxCold = Math.max(...(stats.cold || []).map(x => Number(x[1] || 0)), 1);
+  const maxSum = Math.max(...(stats.sumSeries || []).map(x => Number(x.sum || 0)), 1);
+  const maxZone = Math.max(...(stats.zoneStats || [1]));
+
+  updateStatsOverview(stats);
+  container.innerHTML = `
+    <div class="analysis-chart-grid">
+      <div class="insight-card feature-red">
+        <div class="insight-card-head"><div><div class="insight-eyebrow">热度</div><h4>主区热号分布</h4></div><div class="insight-badge">Top 10</div></div>
+        <div class="metric-list">${(stats.hot || []).map(([num, count]) => `<div class="metric-row"><span class="metric-name">${String(num).padStart(2, '0')}号</span><div class="metric-track"><div class="metric-fill red" style="width:${Math.round((count / maxHot) * 100)}%"></div></div><span class="metric-value">${count}</span></div>`).join('')}</div>
+      </div>
+
+      <div class="insight-card feature-blue">
+        <div class="insight-card-head"><div><div class="insight-eyebrow">蓝球/后区</div><h4>蓝球 / 后区热度</h4></div><div class="insight-badge">近期热点</div></div>
+        <div class="metric-list">${(stats.backHot || []).map(([num, count]) => `<div class="metric-row"><span class="metric-name">${String(num).padStart(2, '0')}号</span><div class="metric-track"><div class="metric-fill blue" style="width:${Math.round((count / maxBack) * 100)}%"></div></div><span class="metric-value">${count}</span></div>`).join('')}</div>
+      </div>
+
+      <div class="insight-card feature-gold">
+        <div class="insight-card-head"><div><div class="insight-eyebrow">遗漏</div><h4>近期冷号观察</h4></div><div class="insight-badge">Top 10</div></div>
+        <div class="metric-list">${(stats.cold || []).map(([num, count]) => `<div class="metric-row"><span class="metric-name">${String(num).padStart(2, '0')}号</span><div class="metric-track"><div class="metric-fill gold" style="width:${Math.round((count / maxCold) * 100)}%"></div></div><span class="metric-value">${count}期</span></div>`).join('')}</div>
+      </div>
+
+      <div class="insight-card feature-purple">
+        <div class="insight-card-head"><div><div class="insight-eyebrow">结构</div><h4>奇偶比例分布</h4></div><div class="insight-badge">最近${stats.sample}期</div></div>
+        <div class="pill-stat-grid">${(stats.oddEven || []).slice(0, 6).map(([ratio, count]) => `<div class="pill-stat"><span>${ratio}</span><strong>${count}次</strong></div>`).join('')}</div>
+      </div>
+
+      <div class="insight-card full-span feature-neutral">
+        <div class="insight-card-head"><div><div class="insight-eyebrow">走势</div><h4>和值走势</h4></div><div class="insight-badge">最近${stats.sample}期</div></div>
+        <div class="sum-trend-list">${(stats.sumSeries || []).map(item => `<div class="sum-trend-row"><span class="sum-period">${item.period}</span><div class="sum-track"><div class="sum-fill" style="width:${Math.round((item.sum / maxSum) * 100)}%"></div></div><span class="sum-value">${item.sum}</span></div>`).join('')}</div>
+      </div>
+
+      <div class="insight-card full-span feature-neutral">
+        <div class="insight-card-head"><div><div class="insight-eyebrow">分区</div><h4>区间分布统计</h4></div><div class="insight-badge">三区结构</div></div>
+        <div class="zone-grid">${(stats.zoneStats || []).map((count, idx) => `<div class="zone-card"><div class="zone-label">${getZoneLabel(idx)}</div><div class="zone-bar"><div class="zone-fill" style="width:${Math.round((count / maxZone) * 100)}%"></div></div><div class="zone-value">${count}</div></div>`).join('')}</div>
+      </div>
+    </div>`;
+}
+
+function updateStatsOverview(stats) {
+  const grid = document.getElementById('statsOverviewGrid');
+  if (!grid) return;
+  const hotMain = stats.hot?.[0] ? `${String(stats.hot[0][0]).padStart(2, '0')}号` : '--';
+  const hotBack = stats.backHot?.[0] ? `${String(stats.backHot[0][0]).padStart(2, '0')}号` : '--';
+  const coldMain = stats.cold?.[0] ? `${String(stats.cold[0][0]).padStart(2, '0')}号` : '--';
+  const hotRatio = stats.oddEven?.[0]?.[0] || '--';
+  grid.innerHTML = `
+    <div class="stat-overview-card glass-panel"><div class="stat-overview-label">数据样本</div><div class="stat-overview-value">${stats.total || 0}</div></div>
+    <div class="stat-overview-card glass-panel"><div class="stat-overview-label">主区热号</div><div class="stat-overview-value">${hotMain}</div></div>
+    <div class="stat-overview-card glass-panel"><div class="stat-overview-label">蓝球/后区热号</div><div class="stat-overview-value">${hotBack}</div></div>
+    <div class="stat-overview-card glass-panel"><div class="stat-overview-label">平均和值</div><div class="stat-overview-value">${stats.avgSum}</div></div>`;
+  const box = document.getElementById('analysisSummaryBox');
+  if (box) box.innerHTML = `
+    <div class="analysis-summary-tags">
+      <span class="analysis-summary-chip"><em>主区热号</em><strong>${hotMain}</strong></span>
+      <span class="analysis-summary-chip"><em>冷号观察</em><strong>${coldMain}</strong></span>
+      <span class="analysis-summary-chip"><em>蓝球/后区热号</em><strong>${hotBack}</strong></span>
+      <span class="analysis-summary-chip"><em>奇偶热点</em><strong>${hotRatio}</strong></span>
+      <span class="analysis-summary-chip"><em>平均和值</em><strong>${stats.avgSum}</strong></span>
+    </div>
+    <div class="analysis-summary-note">刷新数据后会基于最新样本自动更新这里的分析摘要。</div>`;
+}
+
+function renderPrizeRules() {
+  const el = document.getElementById('prizeRulesCard');
+  if (!el) return;
+  if (currentLotteryType === 'ssq') {
+    el.innerHTML = `
+      <div class="prize-rules-header"><div><div class="analysis-badge">Prize Rules</div><h3>双色球中奖规则说明</h3></div><p>红球 01-33 选 6 个，蓝球 01-16 选 1 个</p></div>
+      <div class="prize-rules-grid">
+        ${[['一等奖','6+1','6个红球 + 1个蓝球'],['二等奖','6+0','6个红球'],['三等奖','5+1','5红 + 1蓝'],['四等奖','5+0 / 4+1','5红或4红1蓝'],['五等奖','4+0 / 3+1','4红或3红1蓝'],['六等奖','2+1 / 1+1 / 0+1','命中蓝球即可']].map(([a,b,c])=>`<div class="prize-rule-item"><div class="prize-level">${a}</div><div class="prize-condition">${b}</div><div class="prize-desc">${c}</div></div>`).join('')}
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <div class="prize-rules-header"><div><div class="analysis-badge">Prize Rules</div><h3>大乐透中奖规则说明</h3></div><p>前区 01-35 选 5 个，后区 01-12 选 2 个</p></div>
+      <div class="prize-rules-grid">
+        ${[['一等奖','5+2','前5 + 后2'],['二等奖','5+1','前5 + 后1'],['三等奖','5+0 / 4+2','前5或前4后2'],['四等奖','4+1 / 3+2','前4后1或前3后2'],['五等奖','4+0 / 3+1 / 2+2','组合命中'],['六等奖','3+0 / 2+1 / 1+2 / 0+2','基础命中']].map(([a,b,c])=>`<div class="prize-rule-item"><div class="prize-level">${a}</div><div class="prize-condition">${b}</div><div class="prize-desc">${c}</div></div>`).join('')}
+      </div>`;
+  }
+}
+
+function formatBacktestSet(set) {
+  return currentLotteryType === 'ssq'
+    ? `${set.redBalls.map(n => String(n).padStart(2, '0')).join(' ')} + ${String(set.blueBall).padStart(2, '0')}`
+    : `${set.frontBalls.map(n => String(n).padStart(2, '0')).join(' ')} + ${set.backBalls.map(n => String(n).padStart(2, '0')).join(' ')}`;
+}
+
+function renderBacktestBalls(set) {
+  return currentLotteryType === 'ssq'
+    ? `${set.redBalls.map(n => `<span class="ball-sm red">${String(n).padStart(2, '0')}</span>`).join('')}<span class="sep">+</span><span class="ball-sm blue">${String(set.blueBall).padStart(2, '0')}</span>`
+    : `${set.frontBalls.map(n => `<span class="ball-sm red">${String(n).padStart(2, '0')}</span>`).join('')}<span class="sep">+</span>${set.backBalls.map(n => `<span class="ball-sm blue">${String(n).padStart(2, '0')}</span>`).join('')}`;
+}
+
+function buildStrategyBacktest(state) {
+  const history = state.historyData || [];
+  if (history.length < 12) return [];
+
+  const strategyMetaList = getStrategyMeta();
+  const strategyNames = strategyMetaList.map(m => m.name);
+  const maxMain = currentLotteryType === 'ssq' ? 33 : 35;
+  const maxBack = currentLotteryType === 'ssq' ? 16 : 12;
+  const mainPickCount = currentLotteryType === 'ssq' ? 6 : 5;
+  const lookbackWindow = Math.min(60, Math.max(12, history.length - 1));
+  const maxPeriods = Math.min(60, history.length - 12);
+  const results = [];
+
+  function pickFromPool(pool, count, fallbackMax) {
+    const picked = [];
+    for (const num of pool) {
+      if (!picked.includes(num)) picked.push(num);
+      if (picked.length === count) break;
+    }
+    for (let n = 1; picked.length < count && n <= fallbackMax; n++) {
+      if (!picked.includes(n)) picked.push(n);
+    }
+    return picked.sort((a, b) => a - b);
+  }
+
+  for (let idx = maxPeriods; idx >= 1; idx--) {
+    const target = history[idx - 1];
+    const sample = history.slice(idx, idx + lookbackWindow);
+    if (!target || sample.length < 12) continue;
+
+    const mainFreq = Object.fromEntries(Array.from({ length: maxMain }, (_, i) => [i + 1, 0]));
+    const backFreq = Object.fromEntries(Array.from({ length: maxBack }, (_, i) => [i + 1, 0]));
+    const mainMiss = Object.fromEntries(Array.from({ length: maxMain }, (_, i) => [i + 1, sample.length]));
+
+    sample.forEach((record, sIdx) => {
+      const main = currentLotteryType === 'ssq' ? record.redNumbers : record.frontNumbers;
+      const back = currentLotteryType === 'ssq' ? [record.blueNumber] : record.backNumbers;
+      main.forEach(n => {
+        mainFreq[n] += 1;
+        if (mainMiss[n] === sample.length) mainMiss[n] = sIdx;
+      });
+      back.forEach(n => { backFreq[n] += 1; });
+    });
+
+    const hotMain = Object.entries(mainFreq).sort((a, b) => b[1] - a[1]).map(([n]) => Number(n));
+    const coldMain = Object.entries(mainMiss).sort((a, b) => b[1] - a[1]).map(([n]) => Number(n));
+    const balancedMain = [...hotMain.slice(0, Math.ceil(mainPickCount / 2)), ...coldMain.slice(0, Math.floor(mainPickCount / 2))];
+    const oddMain = Array.from({ length: maxMain }, (_, i) => i + 1).filter(n => n % 2 === 1);
+    const evenMain = Array.from({ length: maxMain }, (_, i) => i + 1).filter(n => n % 2 === 0);
+    const zoneLow = Array.from({ length: Math.ceil(maxMain / 3) }, (_, i) => i + 1);
+    const zoneMid = Array.from({ length: Math.ceil(maxMain / 3) }, (_, i) => i + 1 + Math.ceil(maxMain / 3)).filter(n => n <= maxMain);
+    const zoneHigh = Array.from({ length: maxMain }, (_, i) => i + 1).filter(n => n > Math.ceil(maxMain / 3) * 2);
+    const mysticalMain = [...oddMain.slice(0, Math.ceil(mainPickCount / 2)), ...evenMain.slice(-Math.floor(mainPickCount / 2))];
+    const trendMain = Array.from(new Set([...hotMain.slice(0, Math.max(2, Math.ceil(mainPickCount / 2))), ...hotMain.slice(6, 12), ...coldMain.slice(0, 2)]));
+    const zoneMain = Array.from(new Set([
+      ...zoneLow.filter(n => hotMain.includes(n)).slice(0, Math.max(1, Math.floor(mainPickCount / 3))),
+      ...zoneMid.filter(n => hotMain.includes(n)).slice(0, Math.max(1, Math.floor(mainPickCount / 3))),
+      ...zoneHigh.filter(n => hotMain.includes(n)).slice(0, Math.max(1, mainPickCount - Math.floor(mainPickCount / 3) * 2)),
+      ...coldMain.slice(0, 2)
+    ]));
+    const patternMain = Array.from(new Set([
+      ...coldMain.slice(0, Math.max(2, Math.ceil(mainPickCount / 2))),
+      ...hotMain.slice(2, 6),
+      ...zoneMid.slice(0, 2)
+    ]));
+    const hotBack = Object.entries(backFreq).sort((a, b) => b[1] - a[1]).map(([n]) => Number(n));
+    const coldBack = Object.entries(backFreq).sort((a, b) => a[1] - b[1]).map(([n]) => Number(n));
+    const balancedBack = Array.from(new Set([...hotBack.slice(0, 1), ...coldBack.slice(0, Math.max(1, currentLotteryType === 'ssq' ? 1 : 2))]));
+
+    const candidates = [
+      {
+        strategy: strategyNames[0],
+        set: currentLotteryType === 'ssq'
+          ? { redBalls: pickFromPool([...balancedMain, ...hotMain], 6, maxMain), blueBall: pickFromPool(hotBack, 1, maxBack)[0] }
+          : { frontBalls: pickFromPool([...balancedMain, ...hotMain], 5, maxMain), backBalls: pickFromPool(hotBack, 2, maxBack) },
+        reason: '融合热号、冷号与均衡结构，模拟 ML 综合推荐口径'
+      },
+      {
+        strategy: strategyNames[1],
+        set: currentLotteryType === 'ssq'
+          ? { redBalls: pickFromPool(mysticalMain, 6, maxMain), blueBall: pickFromPool(coldBack.slice().reverse(), 1, maxBack)[0] }
+          : { frontBalls: pickFromPool(mysticalMain, 5, maxMain), backBalls: pickFromPool(coldBack.slice().reverse(), 2, maxBack) },
+        reason: '模拟玄学规律与尾数/奇偶偏好的风格样本'
+      },
+      {
+        strategy: strategyNames[2],
+        set: currentLotteryType === 'ssq'
+          ? { redBalls: pickFromPool(hotMain, 6, maxMain), blueBall: pickFromPool(hotBack, 1, maxBack)[0] }
+          : { frontBalls: pickFromPool(hotMain, 5, maxMain), backBalls: pickFromPool(hotBack, 2, maxBack) },
+        reason: '近期高频号码优先，体现热号追踪'
+      },
+      {
+        strategy: strategyNames[3],
+        set: currentLotteryType === 'ssq'
+          ? { redBalls: pickFromPool(coldMain, 6, maxMain), blueBall: pickFromPool(coldBack, 1, maxBack)[0] }
+          : { frontBalls: pickFromPool(coldMain, 5, maxMain), backBalls: pickFromPool(coldBack, 2, maxBack) },
+        reason: '遗漏较长号码优先，体现冷号回补'
+      },
+      {
+        strategy: strategyNames[4],
+        set: currentLotteryType === 'ssq'
+          ? { redBalls: pickFromPool(balancedMain, 6, maxMain), blueBall: pickFromPool(balancedBack, 1, maxBack)[0] }
+          : { frontBalls: pickFromPool(balancedMain, 5, maxMain), backBalls: pickFromPool(balancedBack, 2, maxBack) },
+        reason: '控制冷热、奇偶和分区，体现均衡策略'
+      },
+      {
+        strategy: strategyNames[5],
+        set: currentLotteryType === 'ssq'
+          ? { redBalls: pickFromPool(trendMain, 6, maxMain), blueBall: pickFromPool([...hotBack.slice(0, 1), ...coldBack.slice(0, 1)], 1, maxBack)[0] }
+          : { frontBalls: pickFromPool(trendMain, 5, maxMain), backBalls: pickFromPool([...hotBack.slice(0, 1), ...coldBack.slice(0, 2)], 2, maxBack) },
+        reason: '短中期频率混合，体现趋势动量'
+      },
+      {
+        strategy: strategyNames[6],
+        set: currentLotteryType === 'ssq'
+          ? { redBalls: pickFromPool(zoneMain, 6, maxMain), blueBall: pickFromPool(balancedBack, 1, maxBack)[0] }
+          : { frontBalls: pickFromPool(zoneMain, 5, maxMain), backBalls: pickFromPool(balancedBack, 2, maxBack) },
+        reason: '按区间覆盖组织号码，体现区间分布策略'
+      },
+      {
+        strategy: strategyNames[7],
+        set: currentLotteryType === 'ssq'
+          ? { redBalls: pickFromPool(patternMain, 6, maxMain), blueBall: pickFromPool([...coldBack, ...hotBack], 1, maxBack)[0] }
+          : { frontBalls: pickFromPool(patternMain, 5, maxMain), backBalls: pickFromPool([...coldBack, ...hotBack], 2, maxBack) },
+        reason: '融合冷号回补、中段承接与节奏反转，体现形态反转策略'
+      }
+    ];
+
+    const evaluated = candidates.map(item => {
+      if (currentLotteryType === 'ssq') {
+        const redHit = item.set.redBalls.filter(n => target.redNumbers.includes(n)).length;
+        const blueHit = item.set.blueBall === target.blueNumber ? 1 : 0;
+        return { ...item, period: target.period, date: target.date, result: { redHit, blueHit, totalHit: redHit + blueHit } };
+      }
+      const frontHit = item.set.frontBalls.filter(n => target.frontNumbers.includes(n)).length;
+      const backHit = item.set.backBalls.filter(n => target.backNumbers.includes(n)).length;
+      return { ...item, period: target.period, date: target.date, result: { frontHit, backHit, totalHit: frontHit + backHit } };
+    }).sort((a, b) => (b.result.totalHit || 0) - (a.result.totalHit || 0));
+
+    results.push({ period: target.period, date: target.date, target, strategies: evaluated, best: evaluated[0] });
+  }
+
+  return results.sort((a, b) => b.period.localeCompare(a.period));
+}
+
+function getThemeColors() {
+  const styles = getComputedStyle(document.body);
+  return {
+    text: styles.getPropertyValue('--text').trim() || '#0f172a',
+    textSoft: styles.getPropertyValue('--text-soft').trim() || '#475569',
+    textMuted: styles.getPropertyValue('--text-muted').trim() || '#94a3b8',
+    border: styles.getPropertyValue('--border').trim() || '#e2e8f0',
+    red: '#ef4444',
+    blue: '#3b82f6',
+    gold: '#f59e0b',
+    emerald: '#10b981',
+    violet: '#8b5cf6'
+  };
+}
+
+function drawLineChart(canvasId, labels, values, activeIndex = -1) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return null;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth || 720;
+  const height = 280;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const colors = getThemeColors();
+  const padding = { top: 22, right: 20, bottom: 42, left: 32 };
+  const innerW = width - padding.left - padding.right;
+  const innerH = height - padding.top - padding.bottom;
+  const max = Math.max(...values, 1);
+
+  ctx.strokeStyle = colors.border;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (innerH / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(width - padding.right, y);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = colors.textMuted;
+  ctx.font = '12px Microsoft YaHei, sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const value = Math.round(max - (max / 4) * i);
+    const y = padding.top + (innerH / 4) * i + 4;
+    ctx.fillText(String(value), padding.left - 8, y);
+  }
+
+  if (!values.length) return null;
+  const stepX = values.length > 1 ? innerW / (values.length - 1) : innerW / 2;
+  const points = values.map((value, index) => ({
+    x: padding.left + (values.length > 1 ? stepX * index : innerW / 2),
+    y: padding.top + innerH - (value / max) * innerH,
+    value,
+    label: labels[index]
+  }));
+
+  const gradient = ctx.createLinearGradient(0, padding.top, 0, padding.top + innerH);
+  gradient.addColorStop(0, 'rgba(59,130,246,.28)');
+  gradient.addColorStop(1, 'rgba(59,130,246,.02)');
+
+  ctx.beginPath();
+  points.forEach((point, index) => {
+    if (index === 0) ctx.moveTo(point.x, point.y);
+    else ctx.lineTo(point.x, point.y);
+  });
+  ctx.lineTo(points[points.length - 1].x, padding.top + innerH);
+  ctx.lineTo(points[0].x, padding.top + innerH);
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  ctx.beginPath();
+  points.forEach((point, index) => {
+    if (index === 0) ctx.moveTo(point.x, point.y);
+    else ctx.lineTo(point.x, point.y);
+  });
+  ctx.strokeStyle = colors.blue;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  points.forEach((point, index) => {
+    const isActive = index === activeIndex;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, isActive ? 7 : 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, isActive ? 4.5 : 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = colors.blue;
+    ctx.fill();
+  });
+
+  if (activeIndex >= 0 && points[activeIndex]) {
+    const point = points[activeIndex];
+    ctx.strokeStyle = 'rgba(59,130,246,.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(point.x, padding.top);
+    ctx.lineTo(point.x, padding.top + innerH);
+    ctx.stroke();
+
+    const tooltipW = 112;
+    const tooltipH = 48;
+    const tooltipX = Math.min(Math.max(point.x - tooltipW / 2, 8), width - tooltipW - 8);
+    const tooltipY = Math.max(point.y - tooltipH - 12, 8);
+    ctx.fillStyle = currentTheme === 'dark' ? 'rgba(15,23,42,.92)' : 'rgba(255,255,255,.96)';
+    ctx.strokeStyle = colors.border;
+    ctx.beginPath();
+    ctx.roundRect(tooltipX, tooltipY, tooltipW, tooltipH, 12);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = colors.text;
+    ctx.textAlign = 'left';
+    ctx.font = '700 12px Microsoft YaHei, sans-serif';
+    ctx.fillText(`第 ${point.label} 期`, tooltipX + 10, tooltipY + 18);
+    ctx.fillStyle = colors.textSoft;
+    ctx.font = '12px Microsoft YaHei, sans-serif';
+    ctx.fillText(`总命中 ${point.value}`, tooltipX + 10, tooltipY + 35);
+  }
+
+  ctx.fillStyle = colors.textMuted;
+  ctx.textAlign = 'center';
+  const labelStep = Math.max(1, Math.ceil(labels.length / 6));
+  labels.forEach((label, index) => {
+    if (index % labelStep !== 0 && index !== labels.length - 1) return;
+    const point = points[index];
+    ctx.fillText(String(label).slice(-4), point.x, height - 14);
+  });
+
+  return { points, width, height };
+}
+
+function drawMultiLineChart(canvasId, labels, datasets) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth || 720;
+  const height = 320;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const colors = getThemeColors();
+  const palette = ['#ef4444', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#14b8a6', '#f97316'];
+  const padding = { top: 24, right: 18, bottom: 44, left: 32 };
+  const innerW = width - padding.left - padding.right;
+  const innerH = height - padding.top - padding.bottom;
+  const max = Math.max(1, ...datasets.flatMap(item => item.values));
+
+  ctx.strokeStyle = colors.border;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (innerH / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(width - padding.right, y);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = colors.textMuted;
+  ctx.font = '12px Microsoft YaHei, sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const value = Math.round(max - (max / 4) * i);
+    const y = padding.top + (innerH / 4) * i + 4;
+    ctx.fillText(String(value), padding.left - 8, y);
+  }
+
+  const stepX = labels.length > 1 ? innerW / (labels.length - 1) : innerW / 2;
+  datasets.forEach((dataset, datasetIndex) => {
+    const stroke = palette[datasetIndex % palette.length];
+    const points = dataset.values.map((value, index) => ({
+      x: padding.left + (labels.length > 1 ? stepX * index : innerW / 2),
+      y: padding.top + innerH - (value / max) * innerH
+    }));
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      if (index === 0) ctx.moveTo(point.x, point.y);
+      else ctx.lineTo(point.x, point.y);
+    });
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    points.forEach(point => {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = stroke;
+      ctx.fill();
+    });
+  });
+
+  ctx.fillStyle = colors.textMuted;
+  ctx.textAlign = 'center';
+  const labelStep = Math.max(1, Math.ceil(labels.length / 6));
+  labels.forEach((label, index) => {
+    if (index % labelStep !== 0 && index !== labels.length - 1) return;
+    const x = padding.left + (labels.length > 1 ? stepX * index : innerW / 2);
+    ctx.fillText(String(label).slice(-4), x, height - 14);
+  });
+}
+
+function drawBarChart(canvasId, labels, values, palette = ['#ef4444', '#3b82f6', '#8b5cf6']) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth || 720;
+  const height = 260;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const colors = getThemeColors();
+  const padding = { top: 20, right: 16, bottom: 42, left: 28 };
+  const innerW = width - padding.left - padding.right;
+  const innerH = height - padding.top - padding.bottom;
+  const max = Math.max(...values, 1);
+  const barWidth = innerW / Math.max(values.length * 1.5, 1);
+  const gap = barWidth * 0.5;
+
+  ctx.strokeStyle = colors.border;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding.left, padding.top + innerH);
+  ctx.lineTo(width - padding.right, padding.top + innerH);
+  ctx.stroke();
+
+  ctx.fillStyle = colors.textMuted;
+  ctx.font = '12px Microsoft YaHei, sans-serif';
+  ctx.textAlign = 'center';
+
+  values.forEach((value, index) => {
+    const x = padding.left + index * (barWidth + gap) + gap / 2;
+    const barH = (value / max) * innerH;
+    const y = padding.top + innerH - barH;
+    ctx.fillStyle = palette[index % palette.length];
+    ctx.beginPath();
+    ctx.roundRect(x, y, barWidth, Math.max(barH, 4), 10);
+    ctx.fill();
+    ctx.fillStyle = colors.textSoft;
+    ctx.fillText(String(value), x + barWidth / 2, y - 8);
+    ctx.fillStyle = colors.textMuted;
+    ctx.fillText(String(labels[index]), x + barWidth / 2, height - 14);
+  });
+}
+
+function queueHistoryCharts(backtests) {
+  requestAnimationFrame(() => {
+    const recent = backtests.slice(0, currentHistoryTrendRange).reverse();
+    const strategyNames = recent[0]?.strategies?.map(item => item.strategy) || [];
+    const leaderCounts = {};
+    const strategyAverages = {};
+    strategyNames.forEach(name => {
+      leaderCounts[name] = 0;
+      strategyAverages[name] = [];
+    });
+
+    recent.forEach(periodItem => {
+      const sorted = [...periodItem.strategies].sort((a, b) => (b.result.totalHit || 0) - (a.result.totalHit || 0));
+      if (sorted[0]) leaderCounts[sorted[0].strategy] = (leaderCounts[sorted[0].strategy] || 0) + 1;
+      sorted.forEach(item => {
+        if (!strategyAverages[item.strategy]) strategyAverages[item.strategy] = [];
+        strategyAverages[item.strategy].push(item.result.totalHit || 0);
+      });
+    });
+
+    const leaderList = Object.entries(leaderCounts).sort((a, b) => b[1] - a[1]).slice(0, 7);
+    drawBarChart('historyLeaderCanvas', leaderList.map(([name]) => name.replace(/策略|推荐/g, '').slice(0, 4) || '策略'), leaderList.map(([, count]) => count), ['#ef4444', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#14b8a6', '#f97316']);
+
+    const avgList = Object.entries(strategyAverages)
+      .map(([name, values]) => ({ name, avg: values.length ? Number((values.reduce((sum, v) => sum + v, 0) / values.length).toFixed(2)) : 0 }))
+      .sort((a, b) => b.avg - a.avg);
+    drawBarChart('historyStructureCanvas', avgList.map(item => item.name.replace(/策略|推荐/g, '').slice(0, 4) || '策略'), avgList.map(item => item.avg), ['#ef4444', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#14b8a6', '#f97316']);
+  });
+}
+
+function renderHistoryDashboard(state) {
+  const trendContainer = document.getElementById('historyTrendContainer');
+  const performanceContainer = document.getElementById('historyPerformanceContainer');
+  const reviewContainer = document.getElementById('historyReviewContainer');
+  if (!trendContainer || !reviewContainer || !performanceContainer) return;
+
+  const backtests = buildStrategyBacktest(state);
+  const strategyPool = backtests.flatMap(item => item.strategies || []);
+  const best = strategyPool.length ? Math.max(...strategyPool.map(x => x.result.totalHit || 0)) : null;
+  const avg = strategyPool.length ? (strategyPool.reduce((a, b) => a + (b.result.totalHit || 0), 0) / strategyPool.length).toFixed(1) : '--';
+  const lastPeriod = state.historyData?.[0]?.period || '--';
+  const strategySummaryMap = {};
+  strategyPool.forEach(item => {
+    const key = item.strategy || '未知策略';
+    if (!strategySummaryMap[key]) strategySummaryMap[key] = { count: 0, total: 0, best: 0 };
+    strategySummaryMap[key].count += 1;
+    strategySummaryMap[key].total += item.result.totalHit || 0;
+    strategySummaryMap[key].best = Math.max(strategySummaryMap[key].best, item.result.totalHit || 0);
+  });
+  const strategyLeaders = Object.entries(strategySummaryMap)
+    .map(([name, info]) => ({ name, ...info, avg: (info.total / info.count).toFixed(1) }))
+    .sort((a, b) => b.best - a.best || b.avg - a.avg);
+  const topLeader = strategyLeaders[0];
+  const stableLeader = [...strategyLeaders].sort((a, b) => b.avg - a.avg || b.best - a.best)[0];
+
+  if (backtests.length === 0) {
+    performanceContainer.style.display = '';
+    trendContainer.innerHTML = `<div class="history-block-head"><div><div class="analysis-badge">Strategy Trend</div><h4>预测策略命中趋势</h4></div><div class="trend-summary">最近开奖期：${lastPeriod}</div></div><div class="reason-grid"><div class="reason-chip">当前已有 ${state.historyData.length} 条历史开奖数据</div><div class="reason-chip">需要至少 12 期样本生成多策略回测</div><div class="reason-chip">样本足够后将自动绘制 6~7 条策略走势</div></div>`;
+    performanceContainer.innerHTML = `<div class="history-block-head"><div><div class="analysis-badge">Backtest Summary</div><h4>历史回溯摘要</h4></div><div class="trend-summary">等待回测</div></div><div class="history-performance-stack"><div class="performance-stat-card"><div class="performance-stat-label">当前状态</div><div class="performance-stat-value">待生成</div><div class="performance-stat-note">历史页将按最新预测中的 6~7 个固定策略分别回测，而不是只展示单一综合结果。</div></div></div>`;
+    reviewContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">🧾</div><p>暂无多策略回测记录</p></div>';
+    return;
+  }
+
+  performanceContainer.style.display = '';
+  const recent = backtests.slice(0, backtests.length).reverse();
+  const allTrendDatasets = (recent[0]?.strategies || []).map(strategy => ({
+    name: strategy.strategy,
+    values: recent.map(periodItem => (periodItem.strategies.find(item => item.strategy === strategy.strategy)?.result.totalHit || 0))
+  }));
+  let trendDatasets = currentHistoryStrategyFilter === 'all'
+    ? allTrendDatasets
+    : allTrendDatasets.filter(item => item.name === currentHistoryStrategyFilter);
+  if (!trendDatasets.length) {
+    currentHistoryStrategyFilter = 'all';
+    trendDatasets = allTrendDatasets;
+  }
+  const filterOptions = ['all', ...allTrendDatasets.map(item => item.name)];
+  const activePeak = trendDatasets.length
+    ? Math.max(...trendDatasets.flatMap(item => item.values))
+    : (best ?? '--');
+
+  trendContainer.innerHTML = `
+    <div class="history-block-head"><div><div class="analysis-badge">Strategy Trend</div><h4>预测策略长样本走势</h4></div><div class="trend-summary">${backtests.length} 期</div></div>
+    <div class="chart-shell chart-shell-mainwide">
+      <div class="chart-shell-head chart-shell-head-stack">
+        <div><div class="chart-shell-title">历史命中走势主图</div></div>
+        <div class="chart-shell-tools">
+          <div class="chart-filter-row">${filterOptions.map((name, index) => {
+            const label = name === 'all' ? '全部策略' : name;
+            const active = name === currentHistoryStrategyFilter;
+            return `<button type="button" class="chart-filter-chip ${active ? 'active' : ''}" onclick="setHistoryStrategyFilter(${index === 0 ? `'all'` : `'${name}'`})">${label}</button>`;
+          }).join('')}</div>
+          <div class="chart-shell-badge">${activePeak} 命中峰值</div>
+        </div>
+      </div>
+      <canvas id="historyTrendCanvas"></canvas>
+      <div class="chart-legend-row">${trendDatasets.map((item, index) => `<span class="chart-legend-pill"><span class="chart-dot chart-dot-${index + 1}"></span>${item.name}</span>`).join('')}</div>
+    </div>`;
+
+  performanceContainer.innerHTML = `
+    <div class="history-block-head"><div><div class="analysis-badge">Backtest Summary</div><h4>历史回溯摘要</h4></div><div class="trend-summary">${backtests.length} 期</div></div>
+    <div class="history-performance-strip history-performance-strip-summary">
+      <div class="performance-stat-card compact metric"><div class="performance-stat-label">回测期数</div><div class="performance-stat-value">${backtests.length}</div><div class="performance-stat-note">拉长样本</div></div>
+      <div class="performance-stat-card compact metric"><div class="performance-stat-label">策略数量</div><div class="performance-stat-value">${backtests[0]?.strategies?.length || 0}</div><div class="performance-stat-note">固定并列</div></div>
+      <div class="performance-stat-card compact metric"><div class="performance-stat-label">最佳命中</div><div class="performance-stat-value">${best ?? '--'}</div><div class="performance-stat-note">${topLeader?.name || '--'}</div></div>
+      <div class="performance-stat-card compact metric"><div class="performance-stat-label">平均命中</div><div class="performance-stat-value">${avg}</div><div class="performance-stat-note">${stableLeader?.name || '--'}</div></div>
+      <div class="performance-stat-card compact wide"><div class="performance-stat-label">领先策略</div><div class="performance-stat-value">${topLeader?.name || '暂无'}</div><div class="performance-stat-note">${strategyLeaders.length ? strategyLeaders.slice(0, 3).map(item => `${item.name}：最佳 ${item.best} / 平均 ${item.avg}`).join(' · ') : '暂无策略排名数据'}</div></div>
+      <div class="performance-stat-card compact wide"><div class="performance-stat-label">最稳策略</div><div class="performance-stat-value">${stableLeader?.name || '暂无'}</div><div class="performance-stat-note">按平均命中优先排序</div></div>
+    </div>`;
+
+  reviewContainer.innerHTML = `
+    <div class="history-block-head"><div><div class="analysis-badge">Strategy Replay</div><h4>各期策略回放</h4></div><div class="trend-summary">${Math.min(60, backtests.length)} 期</div></div>
+    <div class="history-accordion-list history-accordion-list-wide">${backtests.slice(0, 60).map((periodItem, index) => {
+      const bestItem = periodItem.best;
+      const officialBalls = currentLotteryType === 'ssq'
+        ? `${(periodItem.target?.redNumbers || []).map(n => `<span class="ball-sm red">${String(n).padStart(2, '0')}</span>`).join('')}<span class="sep">+</span><span class="ball-sm blue">${String(periodItem.target?.blueNumber || 0).padStart(2, '0')}</span>`
+        : `${(periodItem.target?.frontNumbers || []).map(n => `<span class="ball-sm red">${String(n).padStart(2, '0')}</span>`).join('')}<span class="sep">+</span>${(periodItem.target?.backNumbers || []).map(n => `<span class="ball-sm blue">${String(n).padStart(2, '0')}</span>`).join('')}`;
+      return `<div class="history-accordion-card ${index === 0 ? 'expanded' : ''} ${bestItem?.result?.totalHit >= (currentLotteryType === 'ssq' ? 4 : 3) ? 'hit-tier-high' : bestItem?.result?.totalHit >= 2 ? 'hit-tier-mid' : ''}" data-period="${periodItem.period}"><button class="history-accordion-trigger compact" type="button" onclick="toggleHistoryReplay('${periodItem.period}')"><div class="history-accordion-summary"><div class="history-accordion-main"><div class="history-accordion-period">第 ${periodItem.period} 期</div><div class="history-accordion-date">${periodItem.date || '--'}</div></div><div class="history-accordion-balls">${officialBalls}</div></div><div class="history-accordion-meta"><span class="review-status done compact">最佳：${bestItem?.strategy || '--'}</span><span class="history-accordion-arrow">⌄</span></div></button><div class="history-accordion-panel"><div class="period-strategy-list period-strategy-table">${periodItem.strategies.map(item => {
+        const totalHit = item.result.totalHit || 0;
+        const resultText = currentLotteryType === 'ssq'
+          ? `红${item.result.redHit}/6 · 蓝${item.result.blueHit ? '中' : '未中'} · 总命中 ${totalHit}`
+          : `前${item.result.frontHit}/5 · 后${item.result.backHit}/2 · 总命中 ${totalHit}`;
+        return `<div class="period-strategy-item compact"><div class="period-strategy-left"><div class="history-set-label">${item.strategy}</div><div class="review-ball-row strategy-inline-balls">${renderBacktestBalls(item.set)}</div></div><div class="period-strategy-right"><div class="history-set-result ${totalHit >= (currentLotteryType === 'ssq' ? 4 : 3) ? 'strong' : ''}">${totalHit} 命中</div><div class="history-set-balls">${resultText}</div></div></div>`;
+      }).join('')}</div></div></div>`;
+    }).join('')}</div>`;
+
+  requestAnimationFrame(() => drawMultiLineChart('historyTrendCanvas', recent.map(item => item.period), trendDatasets));
+}
+
 function renderHistory(data) {
   const container = document.getElementById('historyList');
-  const filter = parseInt(document.getElementById('historyFilter').value);
-  const displayData = data.slice(0, filter);
-  
+  const displayData = data;
   if (displayData.length === 0) {
-    container.innerHTML = `<div class="empty-state"><span class="empty-icon">📋</span><p>暂无历史记录</p></div>`;
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><p>暂无历史记录</p></div>';
     return;
   }
-  
-  container.innerHTML = displayData.map(record => {
-    if (currentLotteryType === 'ssq') {
-      return `
-        <div class="history-item">
-          <div class="history-header">
-            <span class="history-period">第 ${record.period} 期</span>
-            <span class="history-date">${record.date}</span>
-          </div>
-          <div class="history-balls">
-            <div class="balls">
-              ${record.redNumbers.map(n => `<span class="ball-sm red">${String(n).padStart(2,'0')}</span>`).join('')}
-              <span class="ball-sm sep">+</span>
-              <span class="ball-sm blue">${String(record.blueNumber).padStart(2,'0')}</span>
-            </div>
-          </div>
-        </div>
-      `;
-    } else {
-      return `
-        <div class="history-item">
-          <div class="history-header">
-            <span class="history-period">第 ${record.period} 期</span>
-            <span class="history-date">${record.date}</span>
-          </div>
-          <div class="history-balls">
-            <div class="balls">
-              ${record.frontNumbers.map(n => `<span class="ball-sm red">${String(n).padStart(2,'0')}</span>`).join('')}
-              <span class="ball-sm sep">+</span>
-              ${record.backNumbers.map(n => `<span class="ball-sm blue">${String(n).padStart(2,'0')}</span>`).join('')}
-            </div>
-          </div>
-        </div>
-      `;
-    }
-  }).join('');
+  const latest = displayData[0];
+  const oldest = displayData[displayData.length - 1];
+  const bodyHtml = `<div class="history-list-grid">${displayData.map(record => {
+    const ballsHtml = currentLotteryType === 'ssq'
+      ? `${record.redNumbers.map(n => `<span class="ball-sm red">${String(n).padStart(2, '0')}</span>`).join('')}<span class="sep">+</span><span class="ball-sm blue">${String(record.blueNumber).padStart(2, '0')}</span>`
+      : `${record.frontNumbers.map(n => `<span class="ball-sm red">${String(n).padStart(2, '0')}</span>`).join('')}<span class="sep">+</span>${record.backNumbers.map(n => `<span class="ball-sm blue">${String(n).padStart(2, '0')}</span>`).join('')}`;
+    return `<div class="history-card pro"><div class="history-card-head"><span class="history-period">第 ${record.period} 期</span><span class="history-date">${record.date}</span></div><div class="history-card-balls">${ballsHtml}</div></div>`;
+  }).join('')}</div>`;
+  container.innerHTML = `<div class="history-table-head"><div><div class="analysis-badge">Draw Archive</div><h4>历史开奖号码一览</h4></div><div class="trend-summary">共 ${displayData.length} 条</div></div><div class="reason-grid"><div class="reason-chip">最新期号：${latest?.period || '--'}</div><div class="reason-chip">最早展示：${oldest?.period || '--'}</div><div class="reason-chip">日期范围：${oldest?.date || '--'} ~ ${latest?.date || '--'}</div></div>${bodyHtml}`;
 }
 
-// ========== 折叠往期推荐 ==========
-function toggleHistoryRec() {
-  const content = document.getElementById('historyRecContent');
-  const toggle = document.getElementById('historyRecToggle');
-  const isOpen = content.style.display !== 'none';
-  
-  if (isOpen) {
-    content.style.display = 'none';
-    toggle.textContent = '▶';
-  } else {
-    content.style.display = 'block';
-    toggle.textContent = '▼';
-    renderHistoryRecPanel(getState());
-  }
-}
+function filterHistory() { renderHistory(getState().historyData); }
+function showLoading(show) { const overlay = document.getElementById('loadingOverlay'); const btn = document.getElementById('refreshBtn'); overlay.classList.toggle('active', !!show); if (btn) btn.disabled = !!show; }
+function showToast(message) { const old = document.querySelector('.toast'); if (old) old.remove(); const toast = document.createElement('div'); toast.className = 'toast'; toast.textContent = message; document.body.appendChild(toast); requestAnimationFrame(() => toast.classList.add('show')); setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 2500); }
+function getZoneLabel(i) { return currentLotteryType === 'ssq' ? ['一区 01-11', '二区 12-22', '三区 23-33'][i] : ['一区 01-12', '二区 13-24', '三区 25-35'][i]; }
 
-// ========== Toast ==========
-function showToast(message) {
-  const old = document.querySelector('.toast');
-  if (old) old.remove();
-  
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  
-  requestAnimationFrame(() => toast.classList.add('show'));
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
-}
-
-// ========== 过滤历史 ==========
-function filterHistory() {
-  renderHistory(getState().historyData);
-}
-
-// ========== 加载状态 ==========
-function showLoading(show) {
-  const overlay = document.getElementById('loadingOverlay');
-  const btn = document.getElementById('refreshBtn');
-  if (show) {
-    overlay.classList.add('active');
-    btn.disabled = true;
-    btn.classList.add('loading');
-  } else {
-    overlay.classList.remove('active');
-    btn.disabled = false;
-    btn.classList.remove('loading');
-  }
-}
-
-// ========== 内置备用数据（扩充到30期） ==========
 function getBuiltInData(type) {
-  if (type === 'ssq') {
-    return [
-      { period: '26039', date: '2026-04-09', redNumbers: [1, 15, 23, 25, 28, 30], blueNumber: 5 },
-      { period: '26038', date: '2026-04-07', redNumbers: [13, 14, 18, 21, 25, 33], blueNumber: 4 },
-      { period: '26037', date: '2026-04-05', redNumbers: [2, 12, 27, 29, 31, 3], blueNumber: 13 },
-      { period: '26036', date: '2026-04-02', redNumbers: [6, 10, 12, 15, 22, 28], blueNumber: 8 },
-      { period: '26035', date: '2026-03-31', redNumbers: [2, 6, 12, 24, 25, 32], blueNumber: 2 },
-      { period: '26034', date: '2026-03-29', redNumbers: [1, 3, 7, 13, 22, 32], blueNumber: 7 },
-      { period: '26033', date: '2026-03-26', redNumbers: [3, 6, 13, 21, 28, 29], blueNumber: 6 },
-      { period: '26032', date: '2026-03-24', redNumbers: [1, 3, 11, 18, 31, 33], blueNumber: 2 },
-      { period: '26031', date: '2026-03-22', redNumbers: [3, 10, 12, 18, 33, 8], blueNumber: 8 },
-      { period: '26030', date: '2026-03-19', redNumbers: [10, 11, 14, 19, 22, 24], blueNumber: 4 },
-      { period: '26029', date: '2026-03-17', redNumbers: [6, 19, 22, 23, 28, 31], blueNumber: 5 },
-      { period: '26028', date: '2026-03-15', redNumbers: [2, 6, 9, 17, 25, 28], blueNumber: 15 },
-      { period: '26027', date: '2026-03-12', redNumbers: [2, 13, 17, 18, 25, 26], blueNumber: 13 },
-      { period: '26026', date: '2026-03-10', redNumbers: [2, 9, 16, 22, 25, 29], blueNumber: 3 },
-      { period: '26025', date: '2026-03-08', redNumbers: [2, 3, 15, 20, 23, 24], blueNumber: 10 },
-      { period: '26024', date: '2026-03-05', redNumbers: [1, 2, 13, 21, 23, 29], blueNumber: 14 },
-      { period: '26023', date: '2026-03-03', redNumbers: [1, 3, 8, 10, 23, 29], blueNumber: 6 },
-      { period: '26022', date: '2026-03-01', redNumbers: [15, 18, 23, 25, 28, 32], blueNumber: 11 },
-      { period: '26021', date: '2026-02-26', redNumbers: [3, 13, 25, 26, 30, 31], blueNumber: 4 },
-      { period: '26020', date: '2026-02-24', redNumbers: [1, 13, 14, 21, 24, 30], blueNumber: 2 },
-      { period: '26019', date: '2026-02-22', redNumbers: [5, 8, 12, 19, 27, 33], blueNumber: 9 },
-      { period: '26018', date: '2026-02-19', redNumbers: [3, 9, 14, 18, 26, 31], blueNumber: 5 },
-      { period: '26017', date: '2026-02-17', redNumbers: [1, 6, 11, 18, 22, 29], blueNumber: 1 },
-      { period: '26016', date: '2026-02-15', redNumbers: [2, 7, 12, 19, 25, 30], blueNumber: 12 },
-      { period: '26015', date: '2026-02-12', redNumbers: [4, 10, 13, 21, 27, 32], blueNumber: 7 },
-      { period: '26014', date: '2026-02-10', redNumbers: [1, 3, 9, 14, 22, 28], blueNumber: 3 },
-      { period: '26013', date: '2026-02-08', redNumbers: [5, 11, 16, 20, 25, 33], blueNumber: 6 },
-      { period: '26012', date: '2026-02-05', redNumbers: [2, 6, 13, 19, 24, 31], blueNumber: 11 },
-      { period: '26011', date: '2026-02-03', redNumbers: [1, 4, 9, 15, 23, 30], blueNumber: 2 },
-      { period: '26010', date: '2026-01-29', redNumbers: [3, 7, 12, 18, 26, 29], blueNumber: 8 },
-      { period: '26009', date: '2026-01-26', redNumbers: [2, 8, 11, 17, 22, 32], blueNumber: 14 },
-      { period: '26008', date: '2026-01-22', redNumbers: [5, 10, 14, 20, 28, 31], blueNumber: 4 },
-      { period: '26007', date: '2026-01-19', redNumbers: [1, 6, 9, 16, 25, 33], blueNumber: 10 },
-      { period: '26006', date: '2026-01-15', redNumbers: [3, 11, 15, 19, 27, 30], blueNumber: 5 },
-      { period: '26005', date: '2026-01-12', redNumbers: [2, 7, 13, 18, 24, 29], blueNumber: 1 },
-      { period: '26004', date: '2026-01-08', redNumbers: [4, 8, 12, 16, 21, 32], blueNumber: 13 },
-      { period: '26003', date: '2026-01-05', redNumbers: [1, 5, 10, 17, 23, 28], blueNumber: 7 },
-      { period: '26002', date: '2026-01-02', redNumbers: [3, 9, 14, 20, 26, 31], blueNumber: 2 },
-      { period: '26001', date: '2025-12-29', redNumbers: [2, 6, 11, 15, 22, 27], blueNumber: 9 },
-    ];
-  } else {
-    return [
-      { period: '26037', date: '2026-04-08', frontNumbers: [7, 12, 13, 28, 32], backNumbers: [6, 8] },
-      { period: '26036', date: '2026-04-06', frontNumbers: [4, 7, 16, 26, 32], backNumbers: [5, 8] },
-      { period: '26035', date: '2026-04-04', frontNumbers: [2, 22, 30, 33, 34], backNumbers: [8, 12] },
-      { period: '26034', date: '2026-04-01', frontNumbers: [11, 12, 25, 26, 27], backNumbers: [8, 11] },
-      { period: '26033', date: '2026-03-30', frontNumbers: [3, 5, 7, 9, 18], backNumbers: [2, 10] },
-      { period: '26032', date: '2026-03-28', frontNumbers: [3, 4, 19, 26, 32], backNumbers: [1, 12] },
-      { period: '26031', date: '2026-03-25', frontNumbers: [6, 8, 22, 29, 34], backNumbers: [5, 7] },
-      { period: '26030', date: '2026-03-23', frontNumbers: [2, 13, 22, 28, 34], backNumbers: [5, 12] },
-      { period: '26029', date: '2026-03-21', frontNumbers: [3, 5, 17, 33, 35], backNumbers: [5, 7] },
-      { period: '26028', date: '2026-03-18', frontNumbers: [15, 27, 29, 30, 34], backNumbers: [1, 10] },
-      { period: '26027', date: '2026-03-16', frontNumbers: [9, 10, 11, 12, 16], backNumbers: [1, 11] },
-      { period: '26026', date: '2026-03-14', frontNumbers: [10, 11, 22, 26, 32], backNumbers: [1, 8] },
-      { period: '26025', date: '2026-03-11', frontNumbers: [3, 15, 24, 28, 29], backNumbers: [3, 7] },
-      { period: '26024', date: '2026-03-09', frontNumbers: [2, 4, 8, 10, 21], backNumbers: [9, 12] },
-      { period: '26023', date: '2026-03-07', frontNumbers: [9, 25, 26, 27, 28], backNumbers: [1, 8] },
-      { period: '26022', date: '2026-03-04', frontNumbers: [5, 8, 12, 14, 17], backNumbers: [4, 5] },
-      { period: '26021', date: '2026-03-02', frontNumbers: [1, 10, 21, 23, 29], backNumbers: [10, 12] },
-      { period: '26020', date: '2026-02-28', frontNumbers: [12, 13, 14, 16, 31], backNumbers: [4, 12] },
-      { period: '26019', date: '2026-02-25', frontNumbers: [9, 11, 19, 30, 35], backNumbers: [1, 12] },
-      { period: '26018', date: '2026-02-22', frontNumbers: [1, 3, 8, 16, 22], backNumbers: [3, 9] },
-      { period: '26017', date: '2026-02-19', frontNumbers: [5, 14, 21, 27, 33], backNumbers: [2, 6] },
-      { period: '26016', date: '2026-02-17', frontNumbers: [4, 7, 18, 25, 31], backNumbers: [5, 11] },
-      { period: '26015', date: '2026-02-14', frontNumbers: [2, 9, 13, 20, 28], backNumbers: [4, 8] },
-      { period: '26014', date: '2026-02-12', frontNumbers: [6, 11, 15, 24, 32], backNumbers: [1, 7] },
-      { period: '26013', date: '2026-02-10', frontNumbers: [3, 8, 17, 22, 35], backNumbers: [2, 10] },
-      { period: '26012', date: '2026-02-07', frontNumbers: [1, 5, 12, 19, 26], backNumbers: [3, 9] },
-      { period: '26011', date: '2026-02-05', frontNumbers: [4, 10, 16, 23, 29], backNumbers: [6, 12] },
-      { period: '26010', date: '2026-02-03', frontNumbers: [2, 7, 14, 21, 30], backNumbers: [1, 5] },
-      { period: '26009', date: '2026-01-29', frontNumbers: [5, 9, 18, 25, 34], backNumbers: [4, 11] },
-      { period: '26008', date: '2026-01-26', frontNumbers: [3, 6, 11, 20, 27], backNumbers: [2, 8] },
-      { period: '26007', date: '2026-01-22', frontNumbers: [8, 13, 17, 24, 31], backNumbers: [3, 7] },
-      { period: '26006', date: '2026-01-19', frontNumbers: [1, 4, 10, 15, 28], backNumbers: [5, 9] },
-      { period: '26005', date: '2026-01-15', frontNumbers: [6, 9, 14, 22, 33], backNumbers: [1, 6] },
-      { period: '26004', date: '2026-01-12', frontNumbers: [2, 5, 11, 18, 25], backNumbers: [4, 10] },
-      { period: '26003', date: '2026-01-08', frontNumbers: [7, 12, 16, 23, 30], backNumbers: [2, 12] },
-      { period: '26002', date: '2026-01-05', frontNumbers: [3, 8, 13, 19, 26], backNumbers: [3, 8] },
-      { period: '26001', date: '2026-01-02', frontNumbers: [4, 9, 15, 21, 32], backNumbers: [1, 7] },
-    ];
-  }
+  if (type === 'ssq') return [
+    { period: '26039', date: '2026-04-09', redNumbers: [1, 15, 23, 25, 28, 30], blueNumber: 5 },
+    { period: '26038', date: '2026-04-07', redNumbers: [13, 14, 18, 21, 25, 33], blueNumber: 4 },
+    { period: '26037', date: '2026-04-05', redNumbers: [2, 12, 27, 29, 31, 3], blueNumber: 13 },
+    { period: '26036', date: '2026-04-02', redNumbers: [6, 10, 12, 15, 22, 28], blueNumber: 8 },
+    { period: '26035', date: '2026-03-31', redNumbers: [2, 6, 12, 24, 25, 32], blueNumber: 2 },
+    { period: '26034', date: '2026-03-29', redNumbers: [1, 3, 7, 13, 22, 32], blueNumber: 7 },
+    { period: '26033', date: '2026-03-26', redNumbers: [3, 6, 13, 21, 28, 29], blueNumber: 6 },
+    { period: '26032', date: '2026-03-24', redNumbers: [1, 3, 11, 18, 31, 33], blueNumber: 2 },
+    { period: '26031', date: '2026-03-22', redNumbers: [3, 10, 12, 18, 33, 8], blueNumber: 8 },
+    { period: '26030', date: '2026-03-19', redNumbers: [10, 11, 14, 19, 22, 24], blueNumber: 4 }
+  ];
+  return [
+    { period: '26037', date: '2026-04-08', frontNumbers: [7, 12, 13, 28, 32], backNumbers: [6, 8] },
+    { period: '26036', date: '2026-04-06', frontNumbers: [4, 7, 16, 26, 32], backNumbers: [5, 8] },
+    { period: '26035', date: '2026-04-04', frontNumbers: [2, 22, 30, 33, 34], backNumbers: [8, 12] },
+    { period: '26034', date: '2026-04-01', frontNumbers: [11, 12, 25, 26, 27], backNumbers: [8, 11] },
+    { period: '26033', date: '2026-03-30', frontNumbers: [3, 5, 7, 9, 18], backNumbers: [2, 10] },
+    { period: '26032', date: '2026-03-28', frontNumbers: [3, 4, 19, 26, 32], backNumbers: [1, 12] },
+    { period: '26031', date: '2026-03-25', frontNumbers: [6, 8, 22, 29, 34], backNumbers: [5, 7] },
+    { period: '26030', date: '2026-03-23', frontNumbers: [2, 13, 22, 28, 34], backNumbers: [5, 12] },
+    { period: '26029', date: '2026-03-21', frontNumbers: [3, 5, 17, 33, 35], backNumbers: [5, 7] },
+    { period: '26028', date: '2026-03-18', frontNumbers: [15, 27, 29, 30, 34], backNumbers: [1, 10] }
+  ];
 }
